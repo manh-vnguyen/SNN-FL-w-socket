@@ -69,7 +69,7 @@ class PeripheralFL():
 
         cifar10.train(model, optimizer, trainloader, DEVICE, 1)
         loss, accuracy = cifar10.test(model, testloader, DEVICE)
-        trained_local_result = (get_parameters(model, config={}), len(trainloader.dataset))
+        trained_local_result = (get_parameters(model), len(trainloader.dataset))
 
         with open(RESULT_CACHE_PATH, 'wb') as file:
             pickle.dump((trained_local_result, loss, accuracy), file)
