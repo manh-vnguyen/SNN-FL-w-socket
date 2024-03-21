@@ -21,6 +21,8 @@ from fedlearn import sha256_hash, set_parameters, get_parameters
 
 parser = argparse.ArgumentParser(description="Flower")
 parser.add_argument("--node-id", type=int, required=True, choices=range(0, 10))
+parser.add_argument("--host", type=str, default="127.0.0.1")
+parser.add_argument("--port", type=int, default=65432, choices=range(0, 65536))
 ARGS = parser.parse_args()
 
 CLIENT_DATABASE_PATH = f"database/client_database_{ARGS.node_id}.json"
@@ -344,16 +346,14 @@ class Client:
         print("Connection closed.")
 
 if __name__ == "__main__":
-    # multiprocessing.set_start_method('forkserver')
-    # HOST = '127.0.0.1'  # The server's hostname or IP address
-    # PORT = 65432        # The port used by the server
+    multiprocessing.set_start_method('forkserver')
     
-    # client = Client(HOST, PORT)
-    # client.connect()
+    client = Client(ARGS.host, ARGS.port)
+    client.connect()
 
 
 
-    peripheral_fl = PeripheralFL()
+    # peripheral_fl = PeripheralFL()
 
-    params = get_parameters(cifar10.load_model().to(DEVICE))
-    peripheral_fl.spawn_new_local_training(0, params)
+    # params = get_parameters(cifar10.load_model().to(DEVICE))
+    # peripheral_fl.spawn_new_local_training(0, params)

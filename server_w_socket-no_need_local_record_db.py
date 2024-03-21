@@ -11,10 +11,16 @@ import json
 import sys
 import os
 import pickle
+import argparse
 
 import cifar10
 from fedlearn import sha256_hash, fedavg_aggregate, set_parameters, get_parameters
- 
+
+parser = argparse.ArgumentParser(description="Flower")
+parser.add_argument("--host", type=str, default="127.0.0.1")
+parser.add_argument("--port", type=int, default=65432, choices=range(0, 65536))
+ARGS = parser.parse_args()
+
 DEVICE = torch.device("cpu" if torch.cuda.is_available() else "cpu")
 
 SERVER_DATABASE_PATH = 'database/server_database.pkl'
@@ -146,7 +152,7 @@ class CentralizeFL():
             self.start_aggregation_if_suffient_result()
         
 class Server:
-    def __init__(self, host='127.0.0.1', port=65432):
+    def __init__(self, host=ARGS.host, port=ARGS.port):
         self.host = host
         self.port = port
 
