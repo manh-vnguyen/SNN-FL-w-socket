@@ -15,7 +15,7 @@ import pickle
 import cifar10
 from fedlearn import sha256_hash, fedavg_aggregate, set_parameters, get_parameters
  
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cpu" if torch.cuda.is_available() else "cpu")
 
 SERVER_DATABASE_PATH = 'database/server_database.pkl'
 CONNECTION_DATABASE_PATH = 'database/connection_database.json'
@@ -91,56 +91,25 @@ def centralized_aggregation(current_training_epoch, client_model_record):
 class CentralizeFL():
     def __init__(self) -> None:
 
-        database = self.read_or_initialize_database()
-
-        current_training_epoch = database['current_training_epoch']
-        client_model_record = database['client_model_record']
-        client_model_logs = database['client_model_logs']
-
         gm_data = read_or_initialize_global_model()
+        self.populate_global_model(gm_data)
+        self.global_aggregation_process = None
+        self.global_model_lock = threading.Lock()
+
+        self.current_training_epoch = self.global_model_epoch + 1
+        self.client_model_record = {}
+        self.client_result_lock = threading.Lock()
+
+        self.min_fit_clients = 2
+
+    def populate_global_model(self, gm_data=None):
         self.global_model_epoch = gm_data['global_model_epoch']
         self.global_model_params = gm_data['global_model_params']
         self.global_model_params_payload = gm_data['global_model_params_payload']
         self.global_model_size = gm_data['global_model_size']
         self.global_accuracy = gm_data['global_accuracy']
         self.global_loss = gm_data['global_loss']
-        self.global_aggregation_process = None
-        self.global_model_lock = threading.Lock()
 
-        self.current_training_epoch = 0 if current_training_epoch is None else current_training_epoch
-        self.client_model_record = {} if client_model_record is None else client_model_record
-        self.client_model_logs = {} if client_model_logs is None else client_model_logs
-        self.client_result_lock = threading.Lock()
-
-        self.min_fit_clients = 2
-
-        print(f"Number of client results: {len(self.client_model_record)}")
-
-    def write_database(self, current_training_epoch, client_model_record, client_model_logs):
-        with open(SERVER_DATABASE_PATH, 'wb') as file:
-            pickle.dump({
-                'current_training_epoch': current_training_epoch,
-                'client_model_record': client_model_record,
-                'client_model_logs': client_model_logs,
-            }, file)
-    
-    def read_database(self):
-        with open(SERVER_DATABASE_PATH, 'rb') as file:
-            data = pickle.load(file)
-
-        return data
-
-    def read_or_initialize_database(self):
-        if not os.path.isfile(SERVER_DATABASE_PATH):
-            self.write_database(0, None, None,)
-
-        return self.read_database()
-    
-    def make_backup(self):
-        self.write_database(
-            self.current_training_epoch, self.client_model_record, self.client_model_logs,
-        )
-    
     def is_aggregation_running(self):
         return (self.global_aggregation_process is not None and self.global_aggregation_process.is_alive())
 
@@ -165,30 +134,15 @@ class CentralizeFL():
         with self.client_result_lock:
             if self.global_model_params is None:
                 gm_data = read_global_model()
-                self.global_model_epoch = gm_data['global_model_epoch']
-                self.global_model_params = gm_data['global_model_params']
-                self.global_model_params_payload = gm_data['global_model_params_payload']
-                self.global_model_size = gm_data['global_model_size']
-                self.global_accuracy = gm_data['global_accuracy']
-                self.global_loss = gm_data['global_loss']
+                self.populate_global_model(gm_data)
                 
                 self.current_training_epoch = self.global_model_epoch + 1
-                self.make_backup()
                 
                 print(f"AFTER get_aggregated_model_if_havent: {self.current_training_epoch, self.global_model_epoch, self.global_model_size, self.global_accuracy, self.global_loss,}")
 
     def receive_client_result(self, client_uid, client_model):
         with self.client_result_lock:
             self.client_model_record[client_uid] = client_model['params']
-            if client_uid not in self.client_model_logs:
-                self.client_model_logs[client_uid] = []
-            self.client_model_logs[client_uid].append({
-                'epoch': client_model['epoch'],
-                'accuracy': client_model['accuracy'],
-                'loss': client_model['loss'],
-            })
-            self.make_backup()
-        
             self.start_aggregation_if_suffient_result()
         
 class Server:
@@ -262,7 +216,6 @@ class Server:
             return "MODEL_REJECTED_ALREADY_EXIST"
         
         self.centralized_fl.receive_client_result(client_uid, client_model)
-        self.make_backup()
 
         return "MODEL_RECEIVED"
 

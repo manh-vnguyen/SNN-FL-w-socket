@@ -16,6 +16,7 @@ from collections import OrderedDict
 from typing import Dict, List, Tuple
 import numpy as np
 import cifar10
+from fedlearn import sha256_hash, set_parameters, get_parameters
 
 
 parser = argparse.ArgumentParser(description="Flower")
@@ -24,18 +25,12 @@ ARGS = parser.parse_args()
 
 CLIENT_DATABASE_PATH = f"database/client_database_{ARGS.node_id}.json"
 RESULT_CACHE_PATH = f"/tmp/data/training_result_{ARGS.node_id}.pkl"
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cpu" if torch.cuda.is_available() else "cpu")
 
-def sha256_hash(data):
-    hash_object = hashlib.sha256()
-    hash_object.update(data)
-    
-    return hash_object.hexdigest()
 
 class PeripheralFL():
     def __init__(self, client_logs = []) -> None:
         self.node_id = ARGS.node_id
-        # self.trainloader, self.testloader = cifar10.load_client_data(self.node_id)
 
         self.local_model_result = None
         self.local_model_payload = None
@@ -45,15 +40,6 @@ class PeripheralFL():
 
         self.current_training_epoch = None if len(client_logs) == 0 else client_logs[-1]['epoch']
         self.client_logs = client_logs
-
-    def get_parameters(self, model, config: Dict[str, str]) -> List[np.ndarray]:
-        return [val.cpu().numpy() for _, val in model.state_dict().items()]
-
-
-    def set_parameters(self, model, parameters: List[np.ndarray]):
-        params_dict = zip(model.state_dict().keys(), parameters)
-        state_dict = OrderedDict({k: torch.Tensor(v.astype(float)) for k, v in params_dict})
-        model.load_state_dict(state_dict, strict=True)
 
 
     def fit(
@@ -66,14 +52,22 @@ class PeripheralFL():
         # Load data
         trainloader, testloader = cifar10.load_client_data(self.node_id)
 
+        print("Loaded data")
+
         # Set model parameters, train model, return updated model parameters
         model = cifar10.load_model().to(DEVICE)
         optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.0)
 
-        self.set_parameters(model, parameters)
+        print("Loaded model")
+
+        set_parameters(model, parameters)
+
+        print("Loaded params")
+
+
         cifar10.train(model, optimizer, trainloader, DEVICE, 1)
         loss, accuracy = cifar10.test(model, testloader, DEVICE)
-        trained_local_result = (self.get_parameters(model, config={}), len(trainloader.dataset))
+        trained_local_result = (get_parameters(model, config={}), len(trainloader.dataset))
 
         with open(RESULT_CACHE_PATH, 'wb') as file:
             pickle.dump((trained_local_result, loss, accuracy), file)
@@ -110,7 +104,7 @@ class PeripheralFL():
 
     def handle_epoch_completed(self):
         if not self.parent_conn.poll():
-            if self.client_logs[-1]['epoch'] != self.current_training_epoch:
+            if len(self.client_logs) == 0 or self.client_logs[-1]['epoch'] != self.current_training_epoch:
                 raise Exception("No training result found in Pipe. But the training result has not been recorded.")
             else:
                 print("Training result has already been obtained.")
@@ -350,9 +344,16 @@ class Client:
         print("Connection closed.")
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method('forkserver')
-    HOST = '127.0.0.1'  # The server's hostname or IP address
-    PORT = 65432        # The port used by the server
+    # multiprocessing.set_start_method('forkserver')
+    # HOST = '127.0.0.1'  # The server's hostname or IP address
+    # PORT = 65432        # The port used by the server
     
-    client = Client(HOST, PORT)
-    client.connect()
+    # client = Client(HOST, PORT)
+    # client.connect()
+
+
+
+    peripheral_fl = PeripheralFL()
+
+    params = get_parameters(cifar10.load_model().to(DEVICE))
+    peripheral_fl.spawn_new_local_training(0, params)
