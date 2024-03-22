@@ -49,33 +49,27 @@ class PeripheralFL():
         parameters: List[np.ndarray], 
         config: Dict[str, str]
     ) -> Tuple[List[np.ndarray], int, Dict]:
-        
-        print("We're training over here")
-        # Load data
-        trainloader, testloader = cifar10.load_client_data(self.node_id)
+        try:
+            # Load data
+            trainloader, testloader = cifar10.load_client_data(self.node_id)
 
-        print("Loaded data")
+            # Set model parameters, train model, return updated model parameters
+            model = cifar10.load_model().to(DEVICE)
+            optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.0)
 
-        # Set model parameters, train model, return updated model parameters
-        model = cifar10.load_model().to(DEVICE)
-        optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.0)
+            set_parameters(model, parameters)
 
-        print("Loaded model")
+            cifar10.train(model, optimizer, trainloader, DEVICE, 1)
+            loss, accuracy = cifar10.test(model, testloader, DEVICE)
+            trained_local_result = (get_parameters(model), len(trainloader.dataset))
 
-        set_parameters(model, parameters)
-
-        print("Loaded params")
-
-
-        cifar10.train(model, optimizer, trainloader, DEVICE, 1)
-        loss, accuracy = cifar10.test(model, testloader, DEVICE)
-        trained_local_result = (get_parameters(model), len(trainloader.dataset))
-
-        with open(RESULT_CACHE_PATH, 'wb') as file:
-            pickle.dump((trained_local_result, loss, accuracy), file)
-
-        conn.send("SUCCESS")
-        conn.close()
+            with open(RESULT_CACHE_PATH, 'wb') as file:
+                pickle.dump((trained_local_result, loss, accuracy), file)
+            conn.send("SUCCESS")
+        except Exception as e:
+            conn.send(f"LOCAL TRAINING FAILED {e}")
+        finally:
+            conn.close()
 
     def is_running_local_training(self):
         return self.local_traing_process is not None and self.local_traing_process.is_alive()
@@ -104,16 +98,21 @@ class PeripheralFL():
         self.current_training_epoch = epoch
         self.local_traing_process.start()
 
-    def handle_epoch_completed(self):
-        if not self.parent_conn.poll():
-            if len(self.client_logs) == 0 or self.client_logs[-1]['epoch'] != self.current_training_epoch:
-                raise Exception("No training result found in Pipe. But the training result has not been recorded.")
+    def did_local_training_suceed(self):
+        if len(self.client_logs) == 0 or self.client_logs[-1]['epoch'] != self.current_training_epoch:
+            if self.parent_conn is None or not self.parent_conn.poll():
+                return False
             else:
-                print("Training result has already been obtained.")
-                return self.client_logs[-1]
-        
-        self.parent_conn.recv()
-        
+                training_message = self.parent_conn.recv()
+                if training_message != 'SUCCESS':
+                    return False
+                
+        return True
+
+    def get_local_training_result_log(self):
+        if self.client_logs[-1]['epoch'] == self.current_training_epoch:
+            return self.client_logs[-1]
+
         # If there are training result, process this result
         with open(RESULT_CACHE_PATH, 'rb') as file:
             self.local_model_result, loss, accuracy = pickle.load(file)
@@ -258,6 +257,19 @@ class Client:
         else:
             print("Complete transfer local model params")
 
+    def start_new_local_training(self, server_status):
+        global_model_params = self.receive_global_model(server_status['global_model_size'])
+        self.peripheral_fl.spawn_new_local_training(server_status['global_training_epoch'], global_model_params)
+        client_status = {
+            'epoch': self.peripheral_fl.current_training_epoch,
+            'status': 'TRAINING_IN_PROGRESS'
+        }
+        self.send_to_server(f"CLIENT_UPDATE_STATUS:::{json.dumps(client_status)}")
+        self.make_backup()
+
+    def is_local_training_behind(self, server_status):
+        return server_status['global_training_epoch'] != self.peripheral_fl.current_training_epoch
+
     def handle_server_send_status(self, message):
         server_status = json.loads(message.split(':::')[1])
 
@@ -269,15 +281,8 @@ class Client:
             }
             self.send_to_server(f"CLIENT_UPDATE_STATUS:::{json.dumps(client_status)}")
         else:
-            if server_status['global_training_epoch'] != self.peripheral_fl.current_training_epoch: 
-                global_model_params = self.receive_global_model(server_status['global_model_size'])
-                self.peripheral_fl.spawn_new_local_training(server_status['global_training_epoch'], global_model_params)
-                client_status = {
-                    'epoch': self.peripheral_fl.current_training_epoch,
-                    'status': 'TRAINING_IN_PROGRESS'
-                }
-                self.send_to_server(f"CLIENT_UPDATE_STATUS:::{json.dumps(client_status)}")
-                self.make_backup()
+            if self.is_local_training_behind(server_status):
+                self.start_new_local_training(server_status)
             else:
                 if self.peripheral_fl.is_running_local_training():
                     client_status = {
@@ -287,9 +292,12 @@ class Client:
                     self.send_to_server(f"CLIENT_UPDATE_STATUS:::{json.dumps(client_status)}")
                 else:
                     if not server_status['received_model_from_client']:
-                        epoch_log = self.peripheral_fl.handle_epoch_completed()
-                        self.local_params_transfer(epoch_log)
-                        self.make_backup()
+                        if self.peripheral_fl.did_local_training_suceed():
+                            epoch_log = self.peripheral_fl.get_local_training_result_log()
+                            self.make_backup()
+                            self.local_params_transfer(epoch_log)
+                        else:
+                            self.start_new_local_training(server_status)
                     else:
                         client_status = {
                             'epoch': self.peripheral_fl.current_training_epoch,
