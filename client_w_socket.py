@@ -32,8 +32,6 @@ DEVICE = torch.device("cpu" if torch.cuda.is_available() else "cpu")
 
 class PeripheralFL():
     def __init__(self, client_logs = []) -> None:
-        self.node_id = ARGS.node_id
-
         self.local_model_result = None
         self.local_model_payload = None
         self.parent_conn, self.child_conn = None, None
@@ -51,7 +49,7 @@ class PeripheralFL():
     ) -> Tuple[List[np.ndarray], int, Dict]:
         try:
             # Load data
-            trainloader, testloader = cifar10.load_client_data(self.node_id)
+            trainloader, testloader = cifar10.load_client_data(ARGS.node_id)
 
             # Set model parameters, train model, return updated model parameters
             model = cifar10.load_model().to(DEVICE)
@@ -108,27 +106,30 @@ class PeripheralFL():
                     return False
                 
         return True
-
-    def get_local_training_result_log(self):
-        if self.client_logs[-1]['epoch'] == self.current_training_epoch:
-            return self.client_logs[-1]
-
-        # If there are training result, process this result
+    
+    def load_local_training_result(self):
         with open(RESULT_CACHE_PATH, 'rb') as file:
-            self.local_model_result, loss, accuracy = pickle.load(file)
+            self.local_model_result, self.local_model_loss, self.local_model_accuracy = pickle.load(file)
 
         self.local_model_payload = msgpack.packb({
                 'epoch': self.current_training_epoch,
                 'params': self.local_model_result, 
-                'accuracy': accuracy,
-                'loss': loss,
+                'accuracy': self.local_model_accuracy,
+                'loss': self.local_model_loss,
             }, default=msgpack_numpy.encode)
+
+    def get_local_training_result_log(self):
+        if self.local_model_result is None:
+            self.load_local_training_result()
+
+        if len(self.client_logs) > 0 and self.client_logs[-1]['epoch'] == self.current_training_epoch:
+            return self.client_logs[-1]
         
         self.client_logs.append({
             'epoch': self.current_training_epoch,
             'status': 'TRAINING_COMPLETED',
-            'loss': loss,
-            'accuracy': accuracy, 
+            'loss': self.local_model_loss,
+            'accuracy': self.local_model_accuracy, 
             'local_model_payload_size': len(self.local_model_payload),
             'local_model_payload_hash': sha256_hash(self.local_model_payload)
         })
