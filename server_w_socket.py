@@ -111,7 +111,7 @@ class CentralizeFL():
 
         self.aggregation_running = False
 
-        self.min_fit_clients = 2
+        self.min_fit_clients = 10
 
     def populate_global_model(self, gm_data=None):
         self.global_model_epoch = gm_data['global_model_epoch']
