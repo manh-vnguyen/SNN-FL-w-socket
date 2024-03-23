@@ -25,6 +25,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 SERVER_DATABASE_PATH = 'database/server_database.pkl'
 CONNECTION_DATABASE_PATH = 'database/connection_database.json'
+AGGREGATION_DATABASE_PATH = 'database/global_model_{}.pkl'
 SERVER_LOG_DATABASE_PATH = 'database/server_log_database.json'
 
 TEMP_GLOBAL_MODEL_PATH = 'database/global_model_temp.pkl'
@@ -49,13 +50,13 @@ def write_global_log(global_model_epoch, global_loss, global_accuracy):
     with open(SERVER_LOG_DATABASE_PATH, 'w') as file:
         json.dump(data, file)
 
-def write_global_model(file_path, global_model_epoch, global_model_params, global_loss, global_accuracy):
+def write_global_model(global_model_epoch, global_model_params, global_loss, global_accuracy):
     global_model_params_payload = msgpack.packb(global_model_params, default=msgpack_numpy.encode)
     global_model_size = len(global_model_params_payload)
 
     write_global_log(global_model_epoch, global_loss, global_accuracy)
 
-    with open(file_path, 'wb') as file:
+    with open(AGGREGATION_DATABASE_PATH.format(global_model_epoch), 'wb') as file:
         pickle.dump({
             'global_model_epoch': global_model_epoch,
             'global_model_params': global_model_params,
@@ -65,19 +66,19 @@ def write_global_model(file_path, global_model_epoch, global_model_params, globa
             'global_accuracy': global_accuracy,
         }, file)
 
-def read_global_model(file_path):
-    with open(file_path, 'rb') as file:
+def read_global_model(epoch):
+    with open(AGGREGATION_DATABASE_PATH.format(epoch), 'rb') as file:
         data = pickle.load(file)
 
     return data
 
 def read_or_initialize_global_model():
-    if not os.path.isfile(PERMANENT_GLOBAL_MODEL_PATH):
+    if not os.path.isfile(AGGREGATION_DATABASE_PATH.format(-1)):
         write_global_model(
-            PERMANENT_GLOBAL_MODEL_PATH, -1, get_parameters(cifar10.load_model().to(DEVICE)), None, None
+            -1, get_parameters(cifar10.load_model().to(DEVICE)), None, None
         )
     
-    return read_global_model(PERMANENT_GLOBAL_MODEL_PATH)
+    return read_global_model(-1)
 
 def evaluate(global_model_params):
     test_loader = cifar10.load_test_data()
@@ -95,7 +96,7 @@ def centralized_aggregation(current_training_epoch, client_model_record):
 
     print(f"Aggregated result: Training epoch {current_training_epoch} Loss {global_loss}, Acc {global_accuracy}")
 
-    write_global_model(TEMP_GLOBAL_MODEL_PATH, current_training_epoch, global_model_params, global_loss, global_accuracy)
+    write_global_model(current_training_epoch, global_model_params, global_loss, global_accuracy)
 
 class CentralizeFL():
     def __init__(self) -> None:
@@ -139,9 +140,9 @@ class CentralizeFL():
             self.global_model_size = None
             self.global_accuracy = None
             self.aggregation_running = True
-            if os.path.isfile(TEMP_GLOBAL_MODEL_PATH):
+            if os.path.isfile(file_path):
                 # Delete the file
-                os.remove(TEMP_GLOBAL_MODEL_PATH)
+                os.remove(file_path)
 
 
     def receive_client_result(self, client_uid, client_model):
@@ -156,14 +157,9 @@ class CentralizeFL():
 
     def get_aggregated_model_if_havent(self):
         with self.client_result_lock:
-            if self.global_model_params is None and os.path.exists(TEMP_GLOBAL_MODEL_PATH):
-                gm_data = read_global_model(TEMP_GLOBAL_MODEL_PATH)
+            if self.global_model_params is None and os.path.exists(AGGREGATION_DATABASE_PATH.format(self.current_training_epoch)):
+                gm_data = read_global_model(self.current_training_epoch)
                 self.populate_global_model(gm_data)
-
-                if os.path.isfile(PERMANENT_GLOBAL_MODEL_PATH):
-                    # Delete the file
-                    os.remove(PERMANENT_GLOBAL_MODEL_PATH)
-                os.rename(TEMP_GLOBAL_MODEL_PATH, PERMANENT_GLOBAL_MODEL_PATH)
                 
                 self.aggregation_running = False
                 self.current_training_epoch = self.global_model_epoch + 1

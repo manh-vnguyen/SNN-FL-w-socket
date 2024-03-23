@@ -117,20 +117,23 @@ class PeripheralFL():
                 'accuracy': self.local_model_accuracy,
                 'loss': self.local_model_loss,
             }, default=msgpack_numpy.encode)
-        
-        if len(self.client_logs) == 0 or self.client_logs[-1]['epoch'] != self.current_training_epoch \
-        or self.client_logs[-1]['status'] != 'TRAINING_COMPLETED' \
-        or sha256_hash(self.local_model_payload) != self.client_logs[-1]['local_model_payload_hash']:
-            self.client_logs.append({
-                'epoch': self.current_training_epoch,
-                'status': 'TRAINING_COMPLETED',
-                'loss': self.local_model_loss,
-                'accuracy': self.local_model_accuracy, 
-                'local_model_payload_size': len(self.local_model_payload),
-                'local_model_payload_hash': sha256_hash(self.local_model_payload)
-            })
 
-        print(json.dumps(self.client_logs[-1], indent=2))
+    def get_local_training_result_log(self):
+        if self.local_model_result is None:
+            self.load_local_training_result()
+
+        if len(self.client_logs) > 0 and self.client_logs[-1]['epoch'] == self.current_training_epoch:
+            return self.client_logs[-1]
+        
+        self.client_logs.append({
+            'epoch': self.current_training_epoch,
+            'status': 'TRAINING_COMPLETED',
+            'loss': self.local_model_loss,
+            'accuracy': self.local_model_accuracy, 
+            'local_model_payload_size': len(self.local_model_payload),
+            'local_model_payload_hash': sha256_hash(self.local_model_payload)
+        })
+        return self.client_logs[-1]
 
 class Client:
     def __init__(self, host, port):
@@ -234,24 +237,74 @@ class Client:
 
         return global_model_params
 
-    def local_params_transfer(self):
+    def local_params_transfer(self, epoch_log):
+        self.send_to_server(f"CLIENT_INITIATE_LOCAL_PARAMS_TRANSFER:::{epoch_log['local_model_payload_size']}")
+
+        # A separate listen from the listen_to_server while loop
+        message = self.sock.recv(1024).decode('utf-8')
+        print(f"Receiving from server: {message}")
+
+        if not message.startswith("SERVER_READY_TO_RECEIVE") or int(message.split(':::')[1]) != epoch_log['local_model_payload_size']:
+            raise Exception("Not receiving the right signal confirmation from server for params transfer")
+        
         self.transfer_data_to_server(self.peripheral_fl.local_model_payload)
 
         message = self.sock.recv(1024).decode('utf-8')
         print(f"Receiving from server: {message}")
+        print(json.dumps(epoch_log))
 
-        if not message.startswith("SERVER_CONFIRM_RECEIVED_MODEL") or message.split(':::')[1] != sha256_hash(self.peripheral_fl.local_model_payload):
+        if not message.startswith("SERVER_CONFIRM_RECEIVED_MODEL") or message.split(':::')[1] != epoch_log['local_model_payload_hash']:
             raise Exception("Not receiving the right signal confirmation from server for params transfer")
         else:
             print("Complete transfer local model params")
 
     def start_new_local_training(self, server_status):
         global_model_params = self.receive_global_model(server_status['global_model_size'])
-        self.peripheral_fl.spawn_new_local_training(server_status['current_training_epoch'], global_model_params)
+        self.peripheral_fl.spawn_new_local_training(server_status['global_training_epoch'], global_model_params)
+        client_status = {
+            'epoch': self.peripheral_fl.current_training_epoch,
+            'status': 'TRAINING_IN_PROGRESS'
+        }
+        self.send_to_server(f"CLIENT_UPDATE_STATUS:::{json.dumps(client_status)}")
         self.make_backup()
 
     def is_local_training_behind(self, server_status):
         return server_status['global_training_epoch'] != self.peripheral_fl.current_training_epoch
+
+    def handle_server_send_status(self, message):
+        server_status = json.loads(message.split(':::')[1])
+
+        if server_status['aggregation_running']:
+            self.peripheral_fl.discard_local_training()
+            client_status = {
+                'epoch': self.peripheral_fl.current_training_epoch,
+                'status': 'AWAIT_NEW_GLOBAL_MODEL'
+            }
+            self.send_to_server(f"CLIENT_UPDATE_STATUS:::{json.dumps(client_status)}")
+        else:
+            if self.is_local_training_behind(server_status):
+                self.start_new_local_training(server_status)
+            else:
+                if self.peripheral_fl.is_running_local_training():
+                    client_status = {
+                        'epoch': self.peripheral_fl.current_training_epoch,
+                        'status': 'TRAINING_IN_PROGRESS'
+                    }
+                    self.send_to_server(f"CLIENT_UPDATE_STATUS:::{json.dumps(client_status)}")
+                else:
+                    if not server_status['received_model_from_client']:
+                        if self.peripheral_fl.did_local_training_suceed():
+                            epoch_log = self.peripheral_fl.get_local_training_result_log()
+                            self.make_backup()
+                            self.local_params_transfer(epoch_log)
+                        else:
+                            self.start_new_local_training(server_status)
+                    else:
+                        client_status = {
+                            'epoch': self.peripheral_fl.current_training_epoch,
+                            'status': 'AWAIT_NEW_GLOBAL_MODEL'
+                        }
+                        self.send_to_server(f"CLIENT_UPDATE_STATUS:::{json.dumps(client_status)}")
     
     def hand_shake(self):
         message = self.sock.recv(1024).decode('utf-8')
@@ -268,51 +321,17 @@ class Client:
                 raise Exception(f"Hand shake failed at: {message}")
         
         self.hand_shake_completed = True
+        
+        # self.handle_unrecognized_message(message)
 
     def frequent_status_check(self):
-        # Craft client status message
-        client_status = {
-            'epoch': self.peripheral_fl.current_training_epoch
-        }
-
-        if self.peripheral_fl.is_running_local_training():
-            client_status['status'] = 'TRAINING_IN_PROGRESS'
-        elif self.peripheral_fl.local_model_payload is None:
-            if self.peripheral_fl.did_local_training_suceed():
-                self.peripheral_fl.load_local_training_result()
-                client_status['status'] = 'TRAINING_COMPLETED'
-                client_status['local_model_payload_size'] = self.peripheral_fl.client_logs[-1]['local_model_payload_size']
-            else:
-                client_status['status'] = 'NO_TRAINING_RESULT'
-        else:
-            client_status['status'] = 'TRAINING_COMPLETED'
-            client_status['local_model_payload_size'] = self.peripheral_fl.client_logs[-1]['local_model_payload_size']
-
-        self.send_to_server(f"CLIENT_SEND_STATUS:::{json.dumps(client_status)}")
+        self.send_to_server(f"CLIENT_INITIATE_STATUS_CHECK")
 
         message = self.sock.recv(1024).decode('utf-8')
         if not message.startswith("SERVER_SEND_STATUS"):
             raise Exception("Client status check not receiving correct response")
         
-        server_status = json.loads(message.split(':::')[1])
-
-        if client_status['status'] == 'TRAINING_IN_PROGRESS':
-            if server_status['command'] != 'KEEP_GOING':
-                print("Something's wrong")
-        elif client_status['status'] == 'TRAINING_COMPLETED':
-            if server_status['command'] == 'STAY_PUT':
-                pass
-            elif server_status['command'] == 'SEND_LOCAL_MODEL':
-                self.local_params_transfer()
-            elif server_status['command'] == 'START_NEW_LOCAL_TRAINING':
-                self.start_new_local_training(server_status)
-        elif client_status['status'] == 'NO_TRAINING_RESULT':
-            if server_status['command'] == 'STAY_PUT':
-                pass
-            elif server_status['command'] == 'START_NEW_LOCAL_TRAINING':
-                self.start_new_local_training(server_status)
-        else:
-            raise Exception("Something's wrong with client status")
+        self.handle_server_send_status(message)
 
     def listen_to_server(self):
         while True:
@@ -324,7 +343,7 @@ class Client:
             time.sleep(5)
 
     def send_to_server(self, message):
-        # print(f"Sending to server: {message}")
+        print(f"Sending to server: {message}")
         self.transfer_data_to_server(message.encode('utf-8'))
 
 

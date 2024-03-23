@@ -25,10 +25,8 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 SERVER_DATABASE_PATH = 'database/server_database.pkl'
 CONNECTION_DATABASE_PATH = 'database/connection_database.json'
+AGGREGATION_DATABASE_PATH = 'database/aggregation_database.pkl'
 SERVER_LOG_DATABASE_PATH = 'database/server_log_database.json'
-
-TEMP_GLOBAL_MODEL_PATH = 'database/global_model_temp.pkl'
-PERMANENT_GLOBAL_MODEL_PATH = 'database/global_model_permanent.pkl'
 
 
 def write_global_log(global_model_epoch, global_loss, global_accuracy):
@@ -49,13 +47,10 @@ def write_global_log(global_model_epoch, global_loss, global_accuracy):
     with open(SERVER_LOG_DATABASE_PATH, 'w') as file:
         json.dump(data, file)
 
-def write_global_model(file_path, global_model_epoch, global_model_params, global_loss, global_accuracy):
+def write_global_model(global_model_epoch, global_model_params, global_loss, global_accuracy):
     global_model_params_payload = msgpack.packb(global_model_params, default=msgpack_numpy.encode)
     global_model_size = len(global_model_params_payload)
-
-    write_global_log(global_model_epoch, global_loss, global_accuracy)
-
-    with open(file_path, 'wb') as file:
+    with open(AGGREGATION_DATABASE_PATH, 'wb') as file:
         pickle.dump({
             'global_model_epoch': global_model_epoch,
             'global_model_params': global_model_params,
@@ -65,19 +60,21 @@ def write_global_model(file_path, global_model_epoch, global_model_params, globa
             'global_accuracy': global_accuracy,
         }, file)
 
-def read_global_model(file_path):
-    with open(file_path, 'rb') as file:
+    write_global_log(global_model_epoch, global_loss, global_accuracy)
+
+def read_global_model():
+    with open(AGGREGATION_DATABASE_PATH, 'rb') as file:
         data = pickle.load(file)
 
     return data
 
 def read_or_initialize_global_model():
-    if not os.path.isfile(PERMANENT_GLOBAL_MODEL_PATH):
+    if not os.path.isfile(AGGREGATION_DATABASE_PATH):
         write_global_model(
-            PERMANENT_GLOBAL_MODEL_PATH, -1, get_parameters(cifar10.load_model().to(DEVICE)), None, None
+            -1, get_parameters(cifar10.load_model().to(DEVICE)), None, None
         )
     
-    return read_global_model(PERMANENT_GLOBAL_MODEL_PATH)
+    return read_global_model()
 
 def evaluate(global_model_params):
     test_loader = cifar10.load_test_data()
@@ -95,7 +92,7 @@ def centralized_aggregation(current_training_epoch, client_model_record):
 
     print(f"Aggregated result: Training epoch {current_training_epoch} Loss {global_loss}, Acc {global_accuracy}")
 
-    write_global_model(TEMP_GLOBAL_MODEL_PATH, current_training_epoch, global_model_params, global_loss, global_accuracy)
+    write_global_model(current_training_epoch, global_model_params, global_loss, global_accuracy)
 
 class CentralizeFL():
     def __init__(self) -> None:
@@ -109,8 +106,6 @@ class CentralizeFL():
         self.client_model_record = {}
         self.client_result_lock = threading.Lock()
 
-        self.aggregation_running = False
-
         self.min_fit_clients = 2
 
     def populate_global_model(self, gm_data=None):
@@ -121,56 +116,41 @@ class CentralizeFL():
         self.global_accuracy = gm_data['global_accuracy']
         self.global_loss = gm_data['global_loss']
 
+    def is_aggregation_running(self):
+        return (self.global_aggregation_process is not None and self.global_aggregation_process.is_alive())
+
     def start_aggregation_if_suffient_result(self):
-        print(f"Checking model aggregation condition: {self.current_training_epoch, list(self.client_model_record.keys())}")
+        print("Checking model aggregation condition")
         if len(self.client_model_record.keys()) >= self.min_fit_clients:
             if self.is_aggregation_running():
                 raise Exception("A global aggregation process is already running. Something is wrong with the code")
             
-            print(f"Starting centralized model aggregation.")
-            self.global_aggregation_process = multiprocessing.Process(target=centralized_aggregation, args=(self.current_training_epoch, self.client_model_record,))
-
-            self.global_aggregation_process.start()
-
             # Delete existing global model
             self.global_model_epoch = None
             self.global_model_params = None 
             self.global_model_params_payload = None
             self.global_model_size = None
             self.global_accuracy = None
-            self.aggregation_running = True
-            if os.path.isfile(TEMP_GLOBAL_MODEL_PATH):
-                # Delete the file
-                os.remove(TEMP_GLOBAL_MODEL_PATH)
 
-
-    def receive_client_result(self, client_uid, client_model):
-        with self.client_result_lock:
-            if client_uid not in self.client_model_record:
-                print(f"Epoch {self.current_training_epoch}: Model {client_uid} added to {list(self.client_model_record.keys())}")
-                self.client_model_record[client_uid] = client_model['params']
-                self.start_aggregation_if_suffient_result()
-
-    def is_aggregation_running(self):
-        return (self.global_aggregation_process is not None and self.global_aggregation_process.is_alive())
+            print(f"Starting centralized model aggregation.")
+            self.global_aggregation_process = multiprocessing.Process(target=centralized_aggregation, args=(self.current_training_epoch, self.client_model_record,))
+            self.global_aggregation_process.start()
 
     def get_aggregated_model_if_havent(self):
         with self.client_result_lock:
-            if self.global_model_params is None and os.path.exists(TEMP_GLOBAL_MODEL_PATH):
-                gm_data = read_global_model(TEMP_GLOBAL_MODEL_PATH)
+            if self.global_model_params is None:
+                gm_data = read_global_model()
                 self.populate_global_model(gm_data)
-
-                if os.path.isfile(PERMANENT_GLOBAL_MODEL_PATH):
-                    # Delete the file
-                    os.remove(PERMANENT_GLOBAL_MODEL_PATH)
-                os.rename(TEMP_GLOBAL_MODEL_PATH, PERMANENT_GLOBAL_MODEL_PATH)
                 
-                self.aggregation_running = False
                 self.current_training_epoch = self.global_model_epoch + 1
                 self.client_model_record = {}
+                
                 print(f"AFTER get_aggregated_model_if_havent: {self.current_training_epoch, self.global_model_epoch, self.global_model_size, self.global_accuracy, self.global_loss,}")
 
-    
+    def receive_client_result(self, client_uid, client_model):
+        with self.client_result_lock:
+            self.client_model_record[client_uid] = client_model['params']
+            self.start_aggregation_if_suffient_result()
         
 class Server:
     def __init__(self, host=ARGS.host, port=ARGS.port):
@@ -225,7 +205,11 @@ class Server:
             
         return received_data
 
-    def receive_client_training_result(self, client_uid, client_model_size):
+    def receive_client_training_result(self, client_uid, message):
+
+        client_model_size = int(message.split(':::')[1])
+        self.send_to_specific_client(client_uid, f"SERVER_READY_TO_RECEIVE:::{client_model_size}")
+
         client_model_payload = self.receive_data_from_specific_client(client_uid, client_model_size)
         client_model = msgpack.unpackb(client_model_payload, object_hook=msgpack_numpy.decode)
 
@@ -242,6 +226,25 @@ class Server:
 
         return "MODEL_RECEIVED"
 
+    def send_status_check(self, client_uid):
+        if self.centralized_fl.is_aggregation_running():
+            server_status = {
+                'client_uid': client_uid,
+                'aggregation_running': True
+            }
+        else:
+            self.centralized_fl.get_aggregated_model_if_havent()
+
+            server_status = {
+                'client_uid': client_uid,
+                'global_training_epoch': self.centralized_fl.current_training_epoch,
+                'global_model_size': self.centralized_fl.global_model_size,
+                'aggregation_running': False,
+                'received_model_from_client': (client_uid in self.centralized_fl.client_model_record)
+            }
+
+        self.send_to_specific_client(client_uid, f"SERVER_SEND_STATUS:::{json.dumps(server_status)}")
+
     def send_global_model_to_client(self, client_uid, message):
         if int(message.split(':::')[1]) != self.centralized_fl.global_model_size:
             raise Exception("Something wrong with confirming the global model size. Can't transfer model")
@@ -257,50 +260,9 @@ class Server:
             raise Exception("The client-received model does not match")
         print(f"Complete global model confirm at: {time.time() - start_time}")
 
-    def handle_client_send_status(self, client_uid, message):
-        # print(f"Receive message from {client_uid}: {message}")
-        client_status = json.loads(message.split(':::')[1])
-
-        server_status = {
-            'client_uid': client_uid,
-        }
-
-        if self.centralized_fl.aggregation_running:
-            self.centralized_fl.get_aggregated_model_if_havent()
-
-        if client_status['status'] == 'TRAINING_IN_PROGRESS':
-            server_status['command'] = 'KEEP_GOING' # IT'S NOT THAT IMPORTANT!!!!!!!!!
-        elif client_status['status'] == 'TRAINING_COMPLETED':
-            if client_status['epoch'] == self.centralized_fl.current_training_epoch:
-                if client_uid in self.centralized_fl.client_model_record or self.centralized_fl.aggregation_running:
-                    server_status['command'] = 'STAY_PUT'
-                else:
-                    server_status['command'] = 'SEND_LOCAL_MODEL'
-                    server_status['local_model_payload_size'] = client_status['local_model_payload_size']
-                    server_status['current_training_epoch'] = self.centralized_fl.current_training_epoch
-                    print(json.dumps(server_status, indent=2))
-            else:
-                if self.centralized_fl.aggregation_running: # Indicate that there is a global model to be distributed
-                    server_status['command'] = 'STAY_PUT'
-                else:
-                    server_status['command'] = 'START_NEW_LOCAL_TRAINING'
-                    server_status['current_training_epoch'] = self.centralized_fl.current_training_epoch
-                    server_status['global_model_size'] = self.centralized_fl.global_model_size
-        elif client_status['status'] == 'NO_TRAINING_RESULT':
-            if self.centralized_fl.aggregation_running:
-                server_status['command'] = 'STAY_PUT'
-            else:
-                server_status['command'] = 'START_NEW_LOCAL_TRAINING'
-                server_status['current_training_epoch'] = self.centralized_fl.current_training_epoch
-                server_status['global_model_size'] = self.centralized_fl.global_model_size
-        else:
-            raise Exception("Something's wrong with client status")
-        
-        self.send_to_specific_client(client_uid, f"SERVER_SEND_STATUS:::{json.dumps(server_status)}")
-
-        if server_status['command'] == 'SEND_LOCAL_MODEL':
-            self.receive_client_training_result(client_uid, client_status['local_model_payload_size'])
-        
+    def handle_client_update_status(self, client_uid, message):
+        print(f"Receive message from {client_uid}: {message}")
+        pass
 
     def create_new_client(self, client_socket):
         client_uid = str(uuid.uuid4())
@@ -375,8 +337,12 @@ class Server:
                 try:
                     message = client_socket.recv(1024).decode('utf-8')
                     if message:
-                        if message.startswith("CLIENT_SEND_STATUS"):
-                            self.handle_client_send_status(client_uid, message)
+                        if message == "CLIENT_INITIATE_STATUS_CHECK":
+                            self.send_status_check(client_uid)
+                        elif message.startswith("CLIENT_UPDATE_STATUS"):
+                            self.handle_client_update_status(client_uid, message)
+                        elif message.startswith("CLIENT_INITIATE_LOCAL_PARAMS_TRANSFER"):
+                            self.receive_client_training_result(client_uid, message)
                         elif message.startswith("CLIENT_INITIATE_GLOBAL_MODEL_RECEIVE"):
                             self.send_global_model_to_client(client_uid, message)
                         else:
@@ -422,9 +388,5 @@ if __name__ == "__main__":
     multiprocessing.set_start_method('forkserver')
     server = Server()
     server.run()
-
     # centralized_fl = CentralizeFL()
     # centralized_fl.start_aggregation_if_suffient_result()
-
-    # server.handle_client_send_status('272b67e5-ac67-4860-9d97-69cdf043acdb', "CLIENT_SEND_STATUS:::{'epoch': 6, 'status': 'TRAINING_COMPLETED', 'local_model_payload_size': 515276111}")
-    
