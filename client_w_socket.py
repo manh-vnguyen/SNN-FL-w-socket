@@ -13,6 +13,7 @@ import copy
 import pickle
 import hashlib
 import argparse
+import random
 
 from collections import OrderedDict
 from typing import Dict, List, Tuple
@@ -84,6 +85,9 @@ class PeripheralFL():
 
         except Exception as e:
             print(f"Training failed {e}")
+            random.randrange(5, 14)
+            print(f"Sleeping for random seconds before retrying")
+
             # with open(RESULT_CACHE_PATH, 'w') as file:
             #     file.write("FAILED")
 
