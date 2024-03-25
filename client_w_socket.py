@@ -17,6 +17,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import cifar10
 from fedlearn import sha256_hash, set_parameters, get_parameters
+from cifar10 import DEVICE
 
 
 parser = argparse.ArgumentParser(description="Flower")
@@ -27,7 +28,6 @@ ARGS = parser.parse_args()
 
 CLIENT_DATABASE_PATH = f"database/client_database_{ARGS.node_id}.json"
 RESULT_CACHE_PATH = f"/tmp/data/training_result_{ARGS.node_id}.pkl"
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class PeripheralFL():

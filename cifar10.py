@@ -28,6 +28,8 @@ import numpy as np
 
 DTYPE = torch.float
 
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 BATCH_SIZE = 64
 # DUMP_FILE_NAME = '/tmp/data/fed-data.pkl'
 DUMP_FILE_NAME = '/tmp/data/fed-data-NonIDD.pkl'

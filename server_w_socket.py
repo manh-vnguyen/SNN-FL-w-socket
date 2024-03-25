@@ -15,13 +15,13 @@ import argparse
 
 import cifar10
 from fedlearn import sha256_hash, fedavg_aggregate, set_parameters, get_parameters
+from cifar10 import DEVICE
 
 parser = argparse.ArgumentParser(description="Flower")
 parser.add_argument("--host", type=str, default="127.0.0.1")
 parser.add_argument("--port", type=int, default=65432, choices=range(0, 65536))
 ARGS = parser.parse_args()
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 SERVER_DATABASE_PATH = 'database/server_database.pkl'
 CONNECTION_DATABASE_PATH = 'database/connection_database.json'
@@ -54,8 +54,6 @@ def write_global_log(global_model_epoch, global_loss, global_accuracy):
 def write_global_model(file_path, global_model_epoch, global_model_params, global_loss, global_accuracy):
     global_model_params_payload = msgpack.packb(global_model_params, default=msgpack_numpy.encode)
     global_model_size = len(global_model_params_payload)
-
-    write_global_log(global_model_epoch, global_loss, global_accuracy)
 
     with open(file_path, 'wb') as file:
         pickle.dump({
@@ -161,6 +159,8 @@ class CentralizeFL():
             if self.global_model_params is None and os.path.exists(TEMP_GLOBAL_MODEL_PATH):
                 gm_data = read_global_model(TEMP_GLOBAL_MODEL_PATH)
                 self.populate_global_model(gm_data)
+
+                write_global_log(self.global_model_epoch, self.global_loss, self.global_accuracy)
 
                 if os.path.isfile(PERMANENT_GLOBAL_MODEL_PATH):
                     # Delete the file
