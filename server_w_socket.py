@@ -49,7 +49,7 @@ def write_global_log(global_model_epoch, global_loss, global_accuracy):
     })
 
     with open(SERVER_LOG_DATABASE_PATH, 'w') as file:
-        json.dump(data, file)
+        json.dump(data, file, indent=2)
 
 def write_global_model(file_path, global_model_epoch, global_model_params, global_loss, global_accuracy):
     global_model_params_payload = msgpack.packb(global_model_params, default=msgpack_numpy.encode)

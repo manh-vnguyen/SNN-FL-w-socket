@@ -43,16 +43,24 @@ def prep_FL_data():
     partition_size = total_size // NUM_CLIENTS
     indices = list(range(total_size))
 
+    num_classes = 0
+    for index in indices:
+        num_classes = max(int(cifar10_train[index][1]) + 1, num_classes) 
 
-    subset_id_lists = [[] for i in range(NUM_CLIENTS)]
+    id_subset_of_class = [[] for i in range(num_classes)]
 
     for index in indices:
         category = int(cifar10_train[index][1])
-        subset_id_lists[category].append(index)
+        id_subset_of_class[category].append(index)
     
+    id_subset_of_client = [[] for i in range(num_classes)]
 
-    subsets = [Subset(cifar10_train, subset_id_list)
-                        for subset_id_list in subset_id_lists]
+    for i in range(NUM_CLIENTS):
+        id_subset_of_client[i] = id_subset_of_class[i][0:int(len(id_subset_of_class[i]) / 2)] + \
+                                id_subset_of_class[(i + 1) % NUM_CLIENTS][int(len(id_subset_of_class[(i + 1) % NUM_CLIENTS]) / 2):int(len(id_subset_of_class[(i + 1) % NUM_CLIENTS]))]
+
+    subsets = [Subset(cifar10_train, client_id)
+                        for client_id in id_subset_of_client]
 
     # Create train/val for each partition and wrap it into DataLoader
     trainsets = []

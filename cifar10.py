@@ -30,7 +30,7 @@ DTYPE = torch.float
 
 BATCH_SIZE = 64
 # DUMP_FILE_NAME = '/tmp/data/fed-data.pkl'
-DUMP_FILE_NAME = '/tmp/data/fed-data.pkl'
+DUMP_FILE_NAME = '/tmp/data/fed-data-NonIDD.pkl'
 
 NUM_OUTPUTS = 10
 
