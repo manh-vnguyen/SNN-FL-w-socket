@@ -17,6 +17,8 @@ import cifar10
 from fedlearn import sha256_hash, fedavg_aggregate, set_parameters, get_parameters
 from cifar10 import DEVICE
 
+CPU_DEVICE = torch.device("cpu")
+
 parser = argparse.ArgumentParser(description="Flower")
 parser.add_argument("--host", type=str, default="127.0.0.1")
 parser.add_argument("--port", type=int, default=65432, choices=range(0, 65536))
@@ -74,7 +76,7 @@ def read_global_model(file_path):
 def read_or_initialize_global_model():
     if not os.path.isfile(PERMANENT_GLOBAL_MODEL_PATH):
         write_global_model(
-            PERMANENT_GLOBAL_MODEL_PATH, -1, get_parameters(cifar10.load_model().to(DEVICE)), None, None
+            PERMANENT_GLOBAL_MODEL_PATH, -1, get_parameters(cifar10.load_model().to(CPU_DEVICE)), None, None
         )
     
     return read_global_model(PERMANENT_GLOBAL_MODEL_PATH)
@@ -111,7 +113,7 @@ class CentralizeFL():
 
         self.aggregation_running = False
 
-        self.min_fit_clients = 10
+        self.min_fit_clients = 8
 
     def populate_global_model(self, gm_data=None):
         self.global_model_epoch = gm_data['global_model_epoch']

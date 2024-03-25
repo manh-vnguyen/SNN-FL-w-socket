@@ -5,8 +5,6 @@ import msgpack_numpy
 import json
 import torch
 from torch import multiprocessing
-from multiprocessing import util
-# print(util.get_temp_dir())
 import time
 import os
 import copy
@@ -19,9 +17,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import cifar10
 from fedlearn import sha256_hash, set_parameters, get_parameters
-# from cifar10 import DEVICE
-
-
+from cifar10 import DEVICE
 
 
 parser = argparse.ArgumentParser(description="Flower")
@@ -30,17 +26,15 @@ parser.add_argument("--host", type=str, default="127.0.0.1")
 parser.add_argument("--port", type=int, default=65432, choices=range(0, 65536))
 ARGS = parser.parse_args()
 
-gpu_assignment = [0, 0, 1, 1, 2, 2, 3, 3]
-
-DEVICE = torch.device(f"cuda:{gpu_assignment[ARGS.node_id]}" if torch.cuda.is_available() else "cpu")
 CLIENT_DATABASE_PATH = f"database/client_database_{ARGS.node_id}.json"
-RESULT_CACHE_PATH = f"database/training_result_{ARGS.node_id}.pkl"
+RESULT_CACHE_PATH = f"/tmp/data/training_result_{ARGS.node_id}.pkl"
 
 
 class PeripheralFL():
     def __init__(self, client_logs = []) -> None:
         self.local_model_result = None
         self.local_model_payload = None
+        self.parent_conn, self.child_conn = None, None
 
         self.local_traing_process = None
         self.local_training_in_progress = False
@@ -53,11 +47,10 @@ class PeripheralFL():
 
 
     def fit(
-        self,  
+        self, conn, 
         parameters: List[np.ndarray], 
         config: Dict[str, str]
     ) -> Tuple[List[np.ndarray], int, Dict]:
-        # while True:
         try:
             # Load data
             trainloader, testloader = cifar10.load_client_data(ARGS.node_id)
@@ -74,18 +67,11 @@ class PeripheralFL():
 
             with open(RESULT_CACHE_PATH, 'wb') as file:
                 pickle.dump((trained_local_result, loss, accuracy), file)
-
-            # break
-
-            del model, trainloader, testloader, trained_local_result, loss, accuracy
-
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
-
+            conn.send("SUCCESS")
         except Exception as e:
-            print(f"Training failed {e}")
-            # with open(RESULT_CACHE_PATH, 'w') as file:
-            #     file.write("FAILED")
+            conn.send(f"LOCAL TRAINING FAILED {e}")
+        finally:
+            conn.close()
 
     def is_running_local_training(self):
         return self.local_traing_process is not None and self.local_traing_process.is_alive()
@@ -100,6 +86,7 @@ class PeripheralFL():
 
         self.local_model_result = None
         self.local_model_payload = None
+        self.parent_conn, self.child_conn = None, None
         
         self.local_traing_process = None
         self.local_training_in_progress = False
@@ -111,18 +98,29 @@ class PeripheralFL():
     def spawn_new_local_training(self, epoch, parameters):
         self.discard_local_training()
         
-        self.local_traing_process = multiprocessing.Process(target=self.fit, args=(parameters, {}))
-        # self.local_traing_process = threading.Thread(target=self.fit, args=(parameters, {}))
+        self.parent_conn, self.child_conn = multiprocessing.Pipe()
+        self.local_traing_process = multiprocessing.Process(target=self.fit, args=(self.child_conn, parameters, {}))
 
         if os.path.exists(RESULT_CACHE_PATH):
             os.remove(RESULT_CACHE_PATH)
 
         self.current_training_epoch = epoch
         self.local_traing_process.start()
-        self.local_training_in_progress = True
+        self.local_training_in_progress = False
+
+    def did_local_training_suceed(self):
+        if len(self.client_logs) == 0 or self.client_logs[-1]['epoch'] != self.current_training_epoch:
+            if self.parent_conn is None or not self.parent_conn.poll():
+                return False
+            else:
+                training_message = self.parent_conn.recv()
+                if training_message != 'SUCCESS':
+                    return False
+                
+        return True
     
     def load_local_training_result_if_done(self):
-        if not os.path.exists(RESULT_CACHE_PATH) or self.is_running_local_training():
+        if not os.path.exists(RESULT_CACHE_PATH):
             return
         
         with open(RESULT_CACHE_PATH, 'rb') as file:
@@ -146,9 +144,6 @@ class PeripheralFL():
                 'local_model_payload_size': len(self.local_model_payload),
                 'local_model_payload_hash': sha256_hash(self.local_model_payload)
             })
-
-        self.local_traing_process.join()
-        self.local_training_in_progress = False
 
         print(json.dumps(self.client_logs[-1], indent=2))
 
@@ -297,17 +292,19 @@ class Client:
         }
 
         if self.peripheral_fl.local_training_in_progress:
-            self.peripheral_fl.load_local_training_result_if_done()
-
-        if self.peripheral_fl.local_training_in_progress:
             client_status['status'] = 'TRAINING_IN_PROGRESS'
         elif self.peripheral_fl.local_model_payload is None:
+            if self.peripheral_fl.did_local_training_suceed():
+                self.peripheral_fl.load_local_training_result()
+                client_status['status'] = 'TRAINING_COMPLETED'
+                client_status['local_model_payload_size'] = self.peripheral_fl.client_logs[-1]['local_model_payload_size']
+            else:
                 client_status['status'] = 'NO_TRAINING_RESULT'
         else:
             client_status['status'] = 'TRAINING_COMPLETED'
             client_status['local_model_payload_size'] = self.peripheral_fl.client_logs[-1]['local_model_payload_size']
 
-        # print(client_status)
+        print(client_status)
 
         self.send_to_server(f"CLIENT_SEND_STATUS:::{json.dumps(client_status)}")
 

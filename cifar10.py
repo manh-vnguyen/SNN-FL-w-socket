@@ -32,7 +32,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 BATCH_SIZE = 64
 # DUMP_FILE_NAME = '/tmp/data/fed-data.pkl'
-DUMP_FILE_NAME = '/tmp/data/fed-data-NonIDD.pkl'
+DUMP_FILE_NAME = '/tmp/data/fed-data-IID.pkl'
 
 NUM_OUTPUTS = 10
 
@@ -174,6 +174,8 @@ def train(model, optimizer, trainloader, device, epoch, model_ema=None, scaler=N
         metric_logger.meters["acc1"].update(acc1.item(), n=batch_size)
         metric_logger.meters["acc5"].update(acc5.item(), n=batch_size)
         metric_logger.meters["img/s"].update(batch_size / (time.time() - start_time))
+
+        del image, target
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()

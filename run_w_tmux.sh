@@ -56,7 +56,7 @@ clean_tmux_sessions() {
     done
 }
 
-NUM_CLIENTS=9
+NUM_CLIENTS=7
 
 case "$ACTION" in
   start)
