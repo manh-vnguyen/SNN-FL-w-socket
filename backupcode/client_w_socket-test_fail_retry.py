@@ -158,7 +158,6 @@ class Client:
         self.host = host
         self.port = port
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.hand_shake_completed = False
 
         self.database = self.read_or_initiate_database()
         self.client_uid = self.database['client_uid']
@@ -197,8 +196,10 @@ class Client:
             print(f"Failed to connect to server {self.host}:{self.port}: {e}")
             return
         
-        self.listen_to_server()
-        self.close()
+        try:
+            self.listen_to_server()
+        finally:
+            self.close()
 
     def handle_identity_prompt(self):
         if self.client_uid is None:

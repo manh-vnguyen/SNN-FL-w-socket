@@ -158,7 +158,6 @@ class Client:
         self.host = host
         self.port = port
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.hand_shake_completed = False
 
         self.database = self.read_or_initiate_database()
         self.client_uid = self.database['client_uid']
@@ -364,14 +363,8 @@ class Client:
 if __name__ == "__main__":
     multiprocessing.set_start_method('forkserver')
     
-    while True:
-        try:
-            client = Client(ARGS.host, ARGS.port)
-            client.connect()
-        except Exception as e:
-            del client
-            print(f"Sleep 5 seconds, then start again")
-            time.sleep(5)
+    client = Client(ARGS.host, ARGS.port)
+    client.connect()
 
 
 
