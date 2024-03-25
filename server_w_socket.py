@@ -30,6 +30,7 @@ SERVER_LOG_DATABASE_PATH = 'database/server_log_database.json'
 TEMP_GLOBAL_MODEL_PATH = 'database/global_model_temp.pkl'
 PERMANENT_GLOBAL_MODEL_PATH = 'database/global_model_permanent.pkl'
 
+start_time = time.time()
 
 def write_global_log(global_model_epoch, global_loss, global_accuracy):
     if not os.path.isfile(SERVER_LOG_DATABASE_PATH):
@@ -44,6 +45,7 @@ def write_global_log(global_model_epoch, global_loss, global_accuracy):
         'global_model_epoch': global_model_epoch,
         'global_loss': global_loss,
         'global_accuracy': global_accuracy,
+        'training_time': time.time() - start_time
     })
 
     with open(SERVER_LOG_DATABASE_PATH, 'w') as file:
@@ -194,7 +196,7 @@ class Server:
 
     def write_database(self, data):
         with open(CONNECTION_DATABASE_PATH, 'w') as file:
-            json.dump(data, file)
+            json.dump(data, file, indent=2)
 
     def read_or_initiate_database(self):
         if not os.path.isfile(CONNECTION_DATABASE_PATH):

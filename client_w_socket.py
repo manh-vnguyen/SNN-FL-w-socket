@@ -147,7 +147,7 @@ class Client:
 
     def write_database(self, data):
         with open(CLIENT_DATABASE_PATH, 'w') as file:
-            json.dump(data, file)
+            json.dump(data, file, indent=2)
 
     def read_or_initiate_database(self):
         if not os.path.isfile(CLIENT_DATABASE_PATH):
