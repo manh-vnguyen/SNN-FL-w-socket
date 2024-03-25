@@ -58,38 +58,39 @@ class PeripheralFL():
         parameters: List[np.ndarray], 
         config: Dict[str, str]
     ) -> Tuple[List[np.ndarray], int, Dict]:
-        # while True:
-        try:
-            # Load data
-            trainloader, testloader = cifar10.load_client_data(ARGS.node_id)
+        while True:
+            try:
+                # Load data
+                trainloader, testloader = cifar10.load_client_data(ARGS.node_id)
 
-            # Set model parameters, train model, return updated model parameters
-            model = cifar10.load_model().to(DEVICE)
-            optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.0)
+                # Set model parameters, train model, return updated model parameters
+                model = cifar10.load_model().to(DEVICE)
+                optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.0)
 
-            set_parameters(model, parameters)
+                set_parameters(model, parameters)
 
-            cifar10.train(model, optimizer, trainloader, DEVICE, 1)
-            loss, accuracy = cifar10.test(model, testloader, DEVICE)
-            trained_local_result = (get_parameters(model), len(trainloader.dataset))
+                cifar10.train(model, optimizer, trainloader, DEVICE, 1)
+                loss, accuracy = cifar10.test(model, testloader, DEVICE)
+                trained_local_result = (get_parameters(model), len(trainloader.dataset))
 
-            with open(RESULT_CACHE_PATH, 'wb') as file:
-                pickle.dump((trained_local_result, loss, accuracy), file)
+                with open(RESULT_CACHE_PATH, 'wb') as file:
+                    pickle.dump((trained_local_result, loss, accuracy), file)
 
-            # break
+                # break
 
-            del model, trainloader, testloader, trained_local_result, loss, accuracy
+                del model, trainloader, testloader, trained_local_result, loss, accuracy
 
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                
+                return 
+            except Exception as e:
+                print(f"Training failed {e}")
+                random.randrange(5, 14)
+                print(f"Sleeping for random seconds before retrying")
 
-        except Exception as e:
-            print(f"Training failed {e}")
-            random.randrange(5, 14)
-            print(f"Sleeping for random seconds before retrying")
-
-            # with open(RESULT_CACHE_PATH, 'w') as file:
-            #     file.write("FAILED")
+                # with open(RESULT_CACHE_PATH, 'w') as file:
+                #     file.write("FAILED")
 
     def is_running_local_training(self):
         return self.local_traing_process is not None and self.local_traing_process.is_alive()

@@ -37,7 +37,7 @@ DUMP_FILE_NAME = '/tmp/data/fed-data-IID.pkl'
 NUM_OUTPUTS = 10
 
 # Temporal Dynamics
-NUM_STEPS = 5
+NUM_STEPS = 10
 
 mixup_transforms = []
 mixup_alpha=0.2
