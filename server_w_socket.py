@@ -91,13 +91,19 @@ def evaluate(global_model_params):
     return loss, accuracy
 
 def centralized_aggregation(current_training_epoch, client_model_record):
-    client_results = [client_model_record[uid] for uid in client_model_record.keys()]
-    global_model_params = fedavg_aggregate(client_results)
-    global_loss, global_accuracy = evaluate(global_model_params)
+    while True:
+        try:
+            client_results = [client_model_record[uid] for uid in client_model_record.keys()]
+            global_model_params = fedavg_aggregate(client_results)
+            global_loss, global_accuracy = evaluate(global_model_params)
 
-    print(f"Aggregated result: Training epoch {current_training_epoch} Loss {global_loss}, Acc {global_accuracy}")
+            print(f"Aggregated result: Training epoch {current_training_epoch} Loss {global_loss}, Acc {global_accuracy}")
 
-    write_global_model(TEMP_GLOBAL_MODEL_PATH, current_training_epoch, global_model_params, global_loss, global_accuracy)
+            write_global_model(TEMP_GLOBAL_MODEL_PATH, current_training_epoch, global_model_params, global_loss, global_accuracy)
+            return
+        except Exception as e:
+            print(f"Error in aggregation: {e}")
+            time.sleep(5)
 
 class CentralizeFL():
     def __init__(self) -> None:

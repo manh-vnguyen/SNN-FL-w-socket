@@ -7,13 +7,9 @@ import torch
 
 import cifar10
 
-
-from spikingjelly.activation_based.model.tv_ref_classify import presets, transforms, utils
-from torch.utils.data.dataloader import default_collate
-
-
 DATA_PATH='/tmp/data/cifar10'
-NUM_CLIENTS = 10
+NUM_CLIENTS = 8
+NUM_CLASSES = 10
 DUMP_FILE_NAME = '/tmp/data/fed-data-NonIDD.pkl'
 
 transform = torchvision.transforms.Compose([
@@ -37,10 +33,9 @@ cifar10_test = torchvision.datasets.CIFAR10(
     download=True
 )
 
-def prep_FL_data():
+def prep_FL_NonIDD_data():
     # Calculate the size of each partition
     total_size = len(cifar10_train)
-    partition_size = total_size // NUM_CLIENTS
     indices = list(range(total_size))
 
     num_classes = 0
@@ -56,8 +51,21 @@ def prep_FL_data():
     id_subset_of_client = [[] for i in range(num_classes)]
 
     for i in range(NUM_CLIENTS):
-        id_subset_of_client[i] = id_subset_of_class[i][0:int(len(id_subset_of_class[i]) / 2)] + \
-                                id_subset_of_class[(i + 1) % NUM_CLIENTS][int(len(id_subset_of_class[(i + 1) % NUM_CLIENTS]) / 2):int(len(id_subset_of_class[(i + 1) % NUM_CLIENTS]))]
+        i0 = i
+        i1 = (i + 1) % NUM_CLIENTS
+        i2 = (i + 2) % NUM_CLIENTS
+        i3 = (i + 3) % NUM_CLIENTS
+        i4 = (i + 4) % NUM_CLIENTS
+        s0, e0 = 0, int(len(id_subset_of_class[i0]) / 4)
+        s1, e1 = int(len(id_subset_of_class[i1]) / 4), int(len(id_subset_of_class[i1]) / 4) * 2
+        s2, e2 = int(len(id_subset_of_class[i2]) / 4) * 2, int(len(id_subset_of_class[i2]) / 4) * 3
+        s3, e3 = int(len(id_subset_of_class[i3]) / 4) * 3, int(len(id_subset_of_class[i3]) / 4) * 4
+        s4, e4 = int(len(id_subset_of_class[i4]) / 4) * 4, int(len(id_subset_of_class[i4]) / 4) * 5
+        id_subset_of_client[i] = id_subset_of_class[i0][s0:e0] + \
+                                id_subset_of_class[i1][s1:e1] + \
+                                id_subset_of_class[i2][s2:e2] + \
+                                id_subset_of_class[i3][s3:e3] + \
+                                id_subset_of_class[i4][s4:e4]
 
     subsets = [Subset(cifar10_train, client_id)
                         for client_id in id_subset_of_client]
@@ -77,7 +85,7 @@ def prep_FL_data():
 def dump_FL_data():
     with open(DUMP_FILE_NAME, 'wb') as file:
         # Use pickle.dump() to dump the data into the file
-        pickle.dump(prep_FL_data(), file)
+        pickle.dump(prep_FL_NonIDD_data(), file)
 
 def test_training():
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
