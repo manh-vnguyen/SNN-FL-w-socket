@@ -14,7 +14,7 @@ from torch.utils.data.dataloader import default_collate
 
 DATA_PATH='/tmp/data/cifar10'
 NUM_CLIENTS = 10
-DUMP_FILE_NAME = '/tmp/data/fed-data-NonIDD.pkl'
+DUMP_FILE_NAME = '/tmp/data/fed-data-NonIDD-8-10.pkl'
 
 transform = torchvision.transforms.Compose([
             torchvision.transforms.ToTensor(),
