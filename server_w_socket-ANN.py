@@ -13,7 +13,7 @@ import os
 import pickle
 import argparse
 
-import cifar10
+import cifar10_ANN
 from fedlearn import sha256_hash, fedavg_aggregate, set_parameters, get_parameters
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -76,17 +76,17 @@ def read_global_model(file_path):
 def read_or_initialize_global_model():
     if not os.path.isfile(PERMANENT_GLOBAL_MODEL_PATH):
         write_global_model(
-            PERMANENT_GLOBAL_MODEL_PATH, -1, get_parameters(cifar10.load_model().to(CPU_DEVICE)), None, None
+            PERMANENT_GLOBAL_MODEL_PATH, -1, get_parameters(cifar10_ANN.load_model().to(CPU_DEVICE)), None, None
         )
     
     return read_global_model(PERMANENT_GLOBAL_MODEL_PATH)
 
 def evaluate(global_model_params):
-    test_loader = cifar10.load_test_data()
-    global_model = cifar10.load_model().to(DEVICE)
+    test_loader = cifar10_ANN.load_test_data()
+    global_model = cifar10_ANN.load_model().to(DEVICE)
 
     set_parameters(global_model, global_model_params)
-    loss, accuracy = cifar10.test(global_model, test_loader, DEVICE)
+    loss, accuracy = cifar10_ANN.test(global_model, test_loader, DEVICE)
 
     return loss, accuracy
 

@@ -28,8 +28,6 @@ import numpy as np
 
 DTYPE = torch.float
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 BATCH_SIZE = 64
 # DUMP_FILE_NAME = '/tmp/data/fed-data.pkl'
 DUMP_FILE_NAME = '/tmp/data/fed-data-IID.pkl'
@@ -37,7 +35,7 @@ DUMP_FILE_NAME = '/tmp/data/fed-data-IID.pkl'
 NUM_OUTPUTS = 10
 
 # Temporal Dynamics
-NUM_STEPS = 10
+NUM_STEPS = 30
 
 mixup_transforms = []
 mixup_alpha=0.2
