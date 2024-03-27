@@ -1,4 +1,5 @@
 import socket
+import threading
 import msgpack
 import msgpack_numpy
 import json
@@ -9,27 +10,11 @@ import os
 import pickle
 import argparse
 import random
+
 from typing import Dict, List, Tuple
 import numpy as np
-from dotenv import load_dotenv
-
-load_dotenv(f"database/.env")
-
-if os.getenv('MODEL') == 'SNN':
-    import cifar10_SNN as cifar10
-elif os.getenv('MODEL') == 'ANN':
-    import cifar10_ANN as cifar10
-else:
-    raise Exception("Model type wrong!!")
-
-if os.getenv('NOISE') != 'None':
-    NOISE_MEAN, NOISE_STD = float(os.getenv('NOISE').split(',')[0]), float(os.getenv('NOISE').split(',')[1])
-else:
-    NOISE_MEAN, NOISE_STD = None, None
-
+import test_socket_server.cifar10_SNN as cifar10_SNN
 from fedlearn import sha256_hash, set_parameters, get_parameters, add_noise_to_model
-
-
 
 parser = argparse.ArgumentParser(description="Flower")
 parser.add_argument("--node-id", type=int, required=True, choices=range(0, 10))
@@ -37,9 +22,8 @@ parser.add_argument("--host", type=str, default="127.0.0.1")
 parser.add_argument("--port", type=int, default=65432, choices=range(0, 65536))
 ARGS = parser.parse_args()
 
-gpu_assignment = [int(x) for x in os.getenv('GPU_ASSIGNMENT').split(',')]
+gpu_assignment = [0, 0, 1, 1, 2, 2, 3, 3]
 
-DATA_PATH = os.getenv('DATA_PATH')
 DEVICE = torch.device(f"cuda:{gpu_assignment[ARGS.node_id]}" if torch.cuda.is_available() else "cpu")
 CLIENT_DATABASE_PATH = f"database/client_database_{ARGS.node_id}.json"
 RESULT_CACHE_PATH = f"database/training_result_{ARGS.node_id}.pkl"
@@ -68,20 +52,18 @@ class PeripheralFL():
         while True:
             try:
                 # Load data
-                trainloader, testloader = cifar10.load_client_data(ARGS.node_id)
+                trainloader, testloader = cifar10_SNN.load_client_data(ARGS.node_id)
 
                 # Set model parameters, train model, return updated model parameters
-                model = cifar10.load_model().to(DEVICE)
+                model = cifar10_SNN.load_model().to(DEVICE)
                 optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.0)
 
                 set_parameters(model, parameters)
 
-                cifar10.train(model, optimizer, trainloader, DEVICE, 1)
-                loss, accuracy = cifar10.test(model, testloader, DEVICE)
+                cifar10_SNN.train(model, optimizer, trainloader, DEVICE, 1)
+                loss, accuracy = cifar10_SNN.test(model, testloader, DEVICE)
 
-                if NOISE_MEAN is not None:
-                    add_noise_to_model(model, DEVICE, NOISE_MEAN, NOISE_STD)
-
+                add_noise_to_model(model, DEVICE, mean=0, std=0.01)
                 trained_local_result = (get_parameters(model), len(trainloader.dataset))
 
                 with open(RESULT_CACHE_PATH, 'wb') as file:

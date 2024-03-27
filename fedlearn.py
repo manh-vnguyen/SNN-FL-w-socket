@@ -17,6 +17,10 @@ NDArrayInt = npt.NDArray[np.int_]
 NDArrayFloat = npt.NDArray[np.float_]
 NDArrays = List[NDArray]
 
+def add_noise_to_model(model, device, mean=0, std=0.01):
+    with torch.no_grad():
+        for param in model.parameters():
+            param.add_(torch.randn(param.size()).to(device) * std + mean)
 
 def sha256_hash(data):
     hash_object = hashlib.sha256()

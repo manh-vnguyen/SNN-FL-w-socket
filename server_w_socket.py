@@ -5,16 +5,26 @@ import msgpack
 import msgpack_numpy
 from torch import multiprocessing
 import time
-import copy
 import torch
 import json
-import sys
 import os
 import pickle
 import argparse
+from dotenv import load_dotenv
 
-import cifar10
-from fedlearn import sha256_hash, fedavg_aggregate, set_parameters, get_parameters
+load_dotenv(f"database/.env")
+
+if os.getenv('MODEL') == 'SNN':
+    import cifar10_SNN as cifar10
+elif os.getenv('MODEL') == 'ANN':
+    import cifar10_ANN as cifar10
+
+if os.getenv('NOISE') != 'None':
+    NOISE_MEAN, NOISE_STD = float(os.getenv('NOISE').split(',')[0]), float(os.getenv('NOISE').split(',')[1])
+else:
+    NOISE_MEAN, NOISE_STD = None, None
+
+from fedlearn import sha256_hash, fedavg_aggregate, set_parameters, get_parameters, add_noise_to_model
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 CPU_DEVICE = torch.device("cpu")
@@ -24,7 +34,7 @@ parser.add_argument("--host", type=str, default="127.0.0.1")
 parser.add_argument("--port", type=int, default=65432, choices=range(0, 65536))
 ARGS = parser.parse_args()
 
-
+DATA_PATH = os.getenv('DATA_PATH')
 SERVER_DATABASE_PATH = 'database/server_database.pkl'
 CONNECTION_DATABASE_PATH = 'database/connection_database.json'
 SERVER_LOG_DATABASE_PATH = 'database/server_log_database.json'
@@ -81,11 +91,9 @@ def read_or_initialize_global_model():
     
     return read_global_model(PERMANENT_GLOBAL_MODEL_PATH)
 
-def evaluate(global_model_params):
+def evaluate(global_model):
     test_loader = cifar10.load_test_data()
-    global_model = cifar10.load_model().to(DEVICE)
-
-    set_parameters(global_model, global_model_params)
+    
     loss, accuracy = cifar10.test(global_model, test_loader, DEVICE)
 
     return loss, accuracy
@@ -95,7 +103,13 @@ def centralized_aggregation(current_training_epoch, client_model_record):
         try:
             client_results = [client_model_record[uid] for uid in client_model_record.keys()]
             global_model_params = fedavg_aggregate(client_results)
-            global_loss, global_accuracy = evaluate(global_model_params)
+
+            global_model = cifar10.load_model().to(DEVICE)
+            set_parameters(global_model, global_model_params)
+            global_loss, global_accuracy = evaluate(global_model)
+
+            if NOISE_MEAN is not None:
+                add_noise_to_model(global_model, DEVICE, NOISE_MEAN, NOISE_STD)
 
             print(f"Aggregated result: Training epoch {current_training_epoch} Loss {global_loss}, Acc {global_accuracy}")
 

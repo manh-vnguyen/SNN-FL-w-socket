@@ -15,9 +15,9 @@ import argparse
 from collections import OrderedDict
 from typing import Dict, List, Tuple
 import numpy as np
-import cifar10
+import test_socket_server.cifar10_SNN as cifar10_SNN
 from fedlearn import sha256_hash, set_parameters, get_parameters
-from cifar10 import DEVICE
+from test_socket_server.cifar10_SNN import DEVICE
 
 
 parser = argparse.ArgumentParser(description="Flower")
@@ -53,16 +53,16 @@ class PeripheralFL():
     ) -> Tuple[List[np.ndarray], int, Dict]:
         try:
             # Load data
-            trainloader, testloader = cifar10.load_client_data(ARGS.node_id)
+            trainloader, testloader = cifar10_SNN.load_client_data(ARGS.node_id)
 
             # Set model parameters, train model, return updated model parameters
-            model = cifar10.load_model().to(DEVICE)
+            model = cifar10_SNN.load_model().to(DEVICE)
             optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.0)
 
             set_parameters(model, parameters)
 
-            cifar10.train(model, optimizer, trainloader, DEVICE, 1)
-            loss, accuracy = cifar10.test(model, testloader, DEVICE)
+            cifar10_SNN.train(model, optimizer, trainloader, DEVICE, 1)
+            loss, accuracy = cifar10_SNN.test(model, testloader, DEVICE)
             trained_local_result = (get_parameters(model), len(trainloader.dataset))
 
             with open(RESULT_CACHE_PATH, 'wb') as file:

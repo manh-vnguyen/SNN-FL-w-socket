@@ -25,17 +25,17 @@ import random
 import pickle
 import time
 import numpy as np
+import os
 
 DTYPE = torch.float
 
 BATCH_SIZE = 64
-# DUMP_FILE_NAME = '/tmp/data/fed-data.pkl'
-DUMP_FILE_NAME = '/tmp/data/fed-data-IID.pkl'
 
 NUM_OUTPUTS = 10
 
 # Temporal Dynamics
-NUM_STEPS = 30
+NUM_STEPS = int(os.getenv('NUM_STEPS'))
+DATA_PATH = os.getenv('DATA_PATH')
 
 mixup_transforms = []
 mixup_alpha=0.2
@@ -95,7 +95,7 @@ def load_val_data(dataset):
 
 def load_client_data(node_id: int):
     """Load partition CIFAR10 data."""
-    with open(DUMP_FILE_NAME, 'rb') as file:
+    with open(DATA_PATH, 'rb') as file:
         # Load the data from the file
         trainsets, valsets, _ = pickle.load(file)
 
@@ -103,7 +103,7 @@ def load_client_data(node_id: int):
 
 def load_test_data():
     """Load test CIFAR10 data."""
-    with open(DUMP_FILE_NAME, 'rb') as file:
+    with open(DATA_PATH, 'rb') as file:
         # Load the data from the file
         _, _, testset = pickle.load(file)
 

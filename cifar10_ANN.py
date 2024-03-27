@@ -9,18 +9,17 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import random
 import pickle
 import time
 import numpy as np
+import os
 
 DTYPE = torch.float
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 BATCH_SIZE = 64
-# DUMP_FILE_NAME = '/tmp/data/fed-data.pkl'
-DUMP_FILE_NAME = '/tmp/data/fed-data-NonIDD-8-10.pkl'
+DATA_PATH = os.getenv('DATA_PATH')
 
 NUM_OUTPUTS = 10
 
@@ -98,7 +97,7 @@ def load_val_data(dataset):
 
 def load_client_data(node_id: int):
     """Load partition CIFAR10 data."""
-    with open(DUMP_FILE_NAME, 'rb') as file:
+    with open(DATA_PATH, 'rb') as file:
         # Load the data from the file
         trainsets, valsets, _ = pickle.load(file)
 
@@ -106,7 +105,7 @@ def load_client_data(node_id: int):
 
 def load_test_data():
     """Load test CIFAR10 data."""
-    with open(DUMP_FILE_NAME, 'rb') as file:
+    with open(DATA_PATH, 'rb') as file:
         # Load the data from the file
         _, _, testset = pickle.load(file)
 
