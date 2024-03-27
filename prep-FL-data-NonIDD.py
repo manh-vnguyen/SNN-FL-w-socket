@@ -5,8 +5,6 @@ import numpy as np
 import pickle
 import torch
 
-import cifar10
-
 DATA_PATH='/tmp/data/cifar10'
 NUM_CLIENTS = 8
 DUMP_FILE_NAME = '/tmp/data/fed-data-NonIDD-8-10.pkl'
@@ -86,21 +84,6 @@ def dump_FL_data():
         # Use pickle.dump() to dump the data into the file
         pickle.dump(prep_FL_NonIDD_data(), file)
 
-def test_training():
-    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    print("Centralized PyTorch training")
-    print("Load data")
-    trainloader, testloader = cifar10.load_client_data(0)
-    net = cifar10.load_model().to(DEVICE)
-    net.eval()
-    optimizer = torch.optim.AdamW(net.parameters(), lr=0.001, weight_decay=0.0)
-    print("Start training")
-    cifar10.train(model=net, optimizer=optimizer, trainloader=trainloader, device=DEVICE, epoch=1)
-    print("Evaluate model")
-    loss, accuracy = cifar10.test(model=net, data_loader=testloader, device=DEVICE)
-    print("Loss: ", loss)
-    print("Accuracy: ", accuracy)
 
 if __name__ == "__main__":
     # test_training()
