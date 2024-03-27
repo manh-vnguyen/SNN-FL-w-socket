@@ -8,7 +8,7 @@ import torch
 import cifar10
 
 DATA_PATH='/tmp/data/cifar10'
-NUM_CLIENTS = 10
+NUM_CLIENTS = 8
 DUMP_FILE_NAME = '/tmp/data/fed-data-NonIDD-8-10.pkl'
 
 transform = torchvision.transforms.Compose([
@@ -39,7 +39,7 @@ def prep_FL_NonIDD_data():
 
     num_classes = 0
     for index in indices:
-        num_classes = max(int(cifar10_train[index][1]) + 1, num_classes) 
+        num_classes = max(int(cifar10_train[index][1]) + 1, num_classes)
 
     id_subset_of_class = [[] for i in range(num_classes)]
 
@@ -51,10 +51,10 @@ def prep_FL_NonIDD_data():
 
     for i in range(NUM_CLIENTS):
         i0 = i
-        i1 = (i + 1) % NUM_CLIENTS
-        i2 = (i + 2) % NUM_CLIENTS
-        i3 = (i + 3) % NUM_CLIENTS
-        i4 = (i + 4) % NUM_CLIENTS
+        i1 = (i + 1) % num_classes
+        i2 = (i + 2) % num_classes
+        i3 = (i + 3) % num_classes
+        i4 = (i + 4) % num_classes
         s0, e0 = 0, int(len(id_subset_of_class[i0]) / 4)
         s1, e1 = int(len(id_subset_of_class[i1]) / 4), int(len(id_subset_of_class[i1]) / 4) * 2
         s2, e2 = int(len(id_subset_of_class[i2]) / 4) * 2, int(len(id_subset_of_class[i2]) / 4) * 3
