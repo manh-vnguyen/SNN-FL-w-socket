@@ -1,0 +1,2 @@
+#!/bin/bash
+docker run -d --name flwr_srvr -w /home/flwr_srvr -v $(pwd):/home/flwr_srvr --gpus all nvidia/cuda:12.3.0-base-ubuntu20.04 tail -f /dev/null
