@@ -51,16 +51,21 @@ def write_global_log(global_model_epoch, global_loss, global_accuracy, epoch_sta
         with open(SERVER_LOG_DATABASE_PATH, 'r') as file:
             data = json.load(file)
 
-    data.append({
-        'global_model_epoch': global_model_epoch,
-        'global_loss': global_loss,
-        'global_accuracy': global_accuracy,
-        'training_time': time.time() - epoch_start_time
-    })
+    try:
+        data.append({
+            'global_model_epoch': global_model_epoch,
+            'global_loss': global_loss,
+            'global_accuracy': global_accuracy,
+            'training_time': time.time() - epoch_start_time
+        })
 
-    with open(SERVER_LOG_DATABASE_PATH, 'w') as file:
-        json.dump(data, file, indent=2)
+        with open(SERVER_LOG_DATABASE_PATH, 'w') as file:
+            json.dump(data, file, indent=2)
 
+        # global_start_time = time.time()
+    except Exception as e:
+        print(f"Error: {e}")
+        raise Exception("Stop")
 
 def write_global_model(file_path, global_model_epoch, global_model_params, global_loss, global_accuracy):
     global_model_params_payload = msgpack.packb(global_model_params, default=msgpack_numpy.encode)
@@ -132,7 +137,7 @@ class CentralizeFL():
 
         self.aggregation_running = False
 
-        self.min_fit_clients = 8
+        self.min_fit_clients = 1
 
         self.epoch_start_time = time.time()
 
