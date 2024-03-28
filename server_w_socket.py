@@ -12,7 +12,16 @@ import pickle
 import argparse
 from dotenv import load_dotenv
 
-load_dotenv(f"database/.env")
+parser = argparse.ArgumentParser(description="Flower")
+parser.add_argument("--host", type=str, default="127.0.0.1")
+parser.add_argument("--port", type=int, default=65432, choices=range(0, 65536))
+parser.add_argument("--db_postfix", type=str, default="")
+
+ARGS = parser.parse_args()
+
+print(ARGS)
+
+load_dotenv(f"database{ARGS.db_postfix}/.env")
 
 if os.getenv('MODEL') == 'SNN':
     import cifar10_SNN as cifar10
@@ -29,18 +38,13 @@ from fedlearn import sha256_hash, fedavg_aggregate, set_parameters, get_paramete
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 CPU_DEVICE = torch.device("cpu")
 
-parser = argparse.ArgumentParser(description="Flower")
-parser.add_argument("--host", type=str, default="127.0.0.1")
-parser.add_argument("--port", type=int, default=65432, choices=range(0, 65536))
-ARGS = parser.parse_args()
-
 DATA_PATH = os.getenv('DATA_PATH')
-SERVER_DATABASE_PATH = 'database/server_database.pkl'
-CONNECTION_DATABASE_PATH = 'database/connection_database.json'
-SERVER_LOG_DATABASE_PATH = 'database/server_log_database.json'
+SERVER_DATABASE_PATH = f"database{ARGS.db_postfix}/server_database.pkl"
+CONNECTION_DATABASE_PATH = f"database{ARGS.db_postfix}/connection_database.json"
+SERVER_LOG_DATABASE_PATH = f"database{ARGS.db_postfix}/server_log_database.json"
 
-TEMP_GLOBAL_MODEL_PATH = 'database/global_model_temp.pkl'
-PERMANENT_GLOBAL_MODEL_PATH = 'database/global_model_permanent.pkl'
+TEMP_GLOBAL_MODEL_PATH = f"database{ARGS.db_postfix}/global_model_temp.pkl"
+PERMANENT_GLOBAL_MODEL_PATH = f"database{ARGS.db_postfix}/global_model_permanent.pkl"
 
 def write_global_log(global_model_epoch, global_loss, global_accuracy, epoch_start_time):
     if not os.path.isfile(SERVER_LOG_DATABASE_PATH):
@@ -110,7 +114,7 @@ def centralized_aggregation(current_training_epoch, client_model_record):
             if NOISE_MEAN is not None:
                 add_noise_to_model(global_model, DEVICE, NOISE_MEAN, NOISE_STD)
 
-            print(f"Aggregated result: Training epoch {current_training_epoch} Loss {global_loss}, Acc {global_accuracy}")
+            print(f"Aggregated result: Device: {DEVICE}, Training epoch {current_training_epoch}, Loss {global_loss}, Acc {global_accuracy}")
 
             write_global_model(TEMP_GLOBAL_MODEL_PATH, current_training_epoch, global_model_params, global_loss, global_accuracy)
             return

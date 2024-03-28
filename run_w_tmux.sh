@@ -47,8 +47,8 @@ halt_command_in_session() {
 
 # Function to clean up all tmux sessions
 clean_tmux_sessions() {
-    tmux list-sessions | grep -E "${PREFIX}server_session|${PREFIX}client_session_[0-9]+" | cut -d: -f1 | while read session_name; do
-        # tmux kill-session -t "$session_name"
+    tmux list-sessions | grep -E "${PREFIX}-server_session|${PREFIX}-client_session_[0-9]+" | cut -d: -f1 | while read session_name; do
+        tmux kill-session -t "$session_name"
         echo "Killed tmux session $session_name"
     done
 }

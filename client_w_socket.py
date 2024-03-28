@@ -13,7 +13,15 @@ from typing import Dict, List, Tuple
 import numpy as np
 from dotenv import load_dotenv
 
-load_dotenv(f"database/.env")
+
+parser = argparse.ArgumentParser(description="Flower")
+parser.add_argument("--node-id", type=int, required=True, choices=range(0, 10))
+parser.add_argument("--host", type=str, default="127.0.0.1")
+parser.add_argument("--port", type=int, default=65432, choices=range(0, 65536))
+parser.add_argument("--db_postfix", type=str, default="")
+ARGS = parser.parse_args()
+
+load_dotenv(f"database{ARGS.db_postfix}/.env")
 
 if os.getenv('MODEL') == 'SNN':
     import cifar10_SNN as cifar10
@@ -30,19 +38,12 @@ else:
 from fedlearn import sha256_hash, set_parameters, get_parameters, add_noise_to_model
 
 
-
-parser = argparse.ArgumentParser(description="Flower")
-parser.add_argument("--node-id", type=int, required=True, choices=range(0, 10))
-parser.add_argument("--host", type=str, default="127.0.0.1")
-parser.add_argument("--port", type=int, default=65432, choices=range(0, 65536))
-ARGS = parser.parse_args()
-
 gpu_assignment = [int(x) for x in os.getenv('GPU_ASSIGNMENT').split(',')]
 
 DATA_PATH = os.getenv('DATA_PATH')
 DEVICE = torch.device(f"cuda:{gpu_assignment[ARGS.node_id]}" if torch.cuda.is_available() else "cpu")
-CLIENT_DATABASE_PATH = f"database/client_database_{ARGS.node_id}.json"
-RESULT_CACHE_PATH = f"database/training_result_{ARGS.node_id}.pkl"
+CLIENT_DATABASE_PATH = f"database{ARGS.db_postfix}/client_database_{ARGS.node_id}.json"
+RESULT_CACHE_PATH = f"database{ARGS.db_postfix}/training_result_{ARGS.node_id}.pkl"
 
 
 class PeripheralFL():
