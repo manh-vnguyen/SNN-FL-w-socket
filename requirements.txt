@@ -1,0 +1,4 @@
+msgpack
+msgpack-numpy
+python-dotenv
+spikingjelly
