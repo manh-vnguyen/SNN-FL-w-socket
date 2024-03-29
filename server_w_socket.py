@@ -19,7 +19,7 @@ parser.add_argument("--db_postfix", type=str, default="")
 
 ARGS = parser.parse_args()
 
-print(ARGS)
+# print(ARGS)
 
 load_dotenv(f"database{ARGS.db_postfix}/.env")
 
@@ -35,7 +35,7 @@ else:
 
 from fedlearn import sha256_hash, fedavg_aggregate, set_parameters, get_parameters, add_noise_to_model
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device(f"cuda:{os.getenv('SERVER_GPU_ASSIGNMENT')}" if torch.cuda.is_available() else "cpu")
 CPU_DEVICE = torch.device("cpu")
 
 DATA_PATH = os.getenv('DATA_PATH')
