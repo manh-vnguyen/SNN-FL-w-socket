@@ -38,7 +38,6 @@ from fedlearn import sha256_hash, set_parameters, get_parameters, add_percentage
 
 gpu_assignment = [int(x) for x in os.getenv('GPU_ASSIGNMENT').split(',')]
 
-DATA_PATH = os.getenv('DATA_PATH')
 DEVICE = torch.device(f"cuda:{gpu_assignment[ARGS.node_id]}" if torch.cuda.is_available() else "cpu")
 CLIENT_DATABASE_PATH = f"database{ARGS.db_postfix}/client_database_{ARGS.node_id}.json"
 RESULT_CACHE_PATH = f"database{ARGS.db_postfix}/training_result_{ARGS.node_id}.pkl"
