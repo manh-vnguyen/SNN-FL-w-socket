@@ -222,7 +222,7 @@ def centralized_aggregation(current_training_epoch, client_results):
             print(f"Error in aggregation: {e}")
             time.sleep(5)
 
-NUM_EPOCHS = 10
+NUM_EPOCHS = 100 if os.getenv('MIN_FIT_CLIENTS') is None else int(os.getenv('MIN_FIT_CLIENTS'))
 NUM_CLIENTS = 8
 MIN_FIT_CLIENTS = 8 if os.getenv('MIN_FIT_CLIENTS') is None else int(os.getenv('MIN_FIT_CLIENTS'))
 
