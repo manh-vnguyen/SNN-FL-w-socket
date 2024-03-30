@@ -27,7 +27,7 @@ else:
 
 NOISE_ABS_STD =  None if os.getenv('NOISE').split(',')[0] == '_' else float(os.getenv('NOISE').split(',')[0])
 NOISE_PERCENTAGE_STD = None if os.getenv('NOISE').split(',')[1] == '_' else float(os.getenv('NOISE').split(',')[1])
-PARAMS_COMPRESSION_RATE = None if os.getenv('PARAMS_COMPRESSION_RATE') == '_' else float(os.getenv('PARAMS_COMPRESSION_RATE'))
+PARAMS_COMPRESSION_RATE = None if os.getenv('PARAMS_COMPRESSION_RATE') == '_' else float(os.getenv('PARAMS_COMPRESSION_RATE').split(',')[1])
 
 from fedlearn import set_parameters, get_parameters, add_percentage_gaussian_noise_to_model, add_constant_gaussian_noise_to_model, fedavg_aggregate, compress_parameters
 
@@ -208,14 +208,14 @@ def centralized_aggregation(test_loader, current_training_epoch, client_results)
 
             print(f"Aggregated result: Device: {DEVICE}, Training epoch {current_training_epoch}, Loss {global_loss}, Acc {global_accuracy}")
 
-            if NOISE_ABS_STD is not None:
-                add_constant_gaussian_noise_to_model(global_model, DEVICE, NOISE_ABS_STD)
-            if NOISE_PERCENTAGE_STD is not None:
-                add_percentage_gaussian_noise_to_model(global_model, DEVICE, NOISE_PERCENTAGE_STD)
+            # if NOISE_ABS_STD is not None:
+            #     add_constant_gaussian_noise_to_model(global_model, DEVICE, NOISE_ABS_STD)
+            # if NOISE_PERCENTAGE_STD is not None:
+            #     add_percentage_gaussian_noise_to_model(global_model, DEVICE, NOISE_PERCENTAGE_STD)
 
-            global_model_params = get_parameters(global_model)
-            if PARAMS_COMPRESSION_RATE is not None:
-                global_model_params = compress_parameters(global_model_params, PARAMS_COMPRESSION_RATE)
+            # global_model_params = get_parameters(global_model)
+            # if PARAMS_COMPRESSION_RATE is not None:
+            #     global_model_params = compress_parameters(global_model_params, PARAMS_COMPRESSION_RATE)
 
             write_global_model(PERMANENT_GLOBAL_MODEL_PATH, current_training_epoch, global_model_params, global_loss, global_accuracy)
 

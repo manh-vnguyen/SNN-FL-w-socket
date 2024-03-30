@@ -31,6 +31,26 @@ def add_constant_gaussian_noise_to_model(model, device, std=0.01):
         for param in model.parameters():
             param.add_(torch.randn(param.size()).to(device) * std)
 
+def compress_parameters(parameters: List[np.ndarray], compression_rate) -> List[np.ndarray]:
+    # Flatten all parameters to a single array
+    all_params = np.concatenate([p.flatten() for p in parameters])
+    
+    # Determine the threshold value for the top 'compression_rate' fraction of parameters
+    if compression_rate > 0:
+        threshold = np.quantile(np.abs(all_params), 1 - compression_rate)
+    else:
+        # If compression_rate is 0, we keep no parameters (everything is set to 0)
+        threshold = np.inf
+    
+    # Apply the threshold to each parameter matrix
+    compressed_parameters = []
+    for param in parameters:
+        # Use np.where to keep values above the threshold, else set to 0
+        compressed_param = np.where(np.abs(param) >= threshold, param, 0)
+        compressed_parameters.append(compressed_param)
+    
+    return compressed_parameters
+
 def sha256_hash(data):
     hash_object = hashlib.sha256()
     hash_object.update(data)
