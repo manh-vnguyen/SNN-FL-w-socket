@@ -191,21 +191,15 @@ def read_or_initialize_global_model():
     
     return read_global_model(PERMANENT_GLOBAL_MODEL_PATH)
 
-def evaluate(global_model):
-    test_loader = cifar10.load_test_data()
-    
-    loss, accuracy = cifar10.test(global_model, test_loader, DEVICE)
-
-    return loss, accuracy
-
-def centralized_aggregation(current_training_epoch, client_results):
+def centralized_aggregation(test_loader, current_training_epoch, client_results):
     while True:
         try:
             global_model_params = fedavg_aggregate(client_results)
 
             global_model = cifar10.load_model().to(DEVICE)
             set_parameters(global_model, global_model_params)
-            global_loss, global_accuracy = evaluate(global_model)
+
+            global_loss, global_accuracy = cifar10.test(global_model, test_loader, DEVICE)
 
             # if NOISE_ABS_STD is not None:
             #     add_constant_gaussian_noise_to_model(global_model, DEVICE, NOISE_ABS_STD)
@@ -228,6 +222,7 @@ MIN_FIT_CLIENTS = 8 if os.getenv('MIN_FIT_CLIENTS') is None else int(os.getenv('
 
 
 if __name__ == "__main__":
+    test_loader = cifar10.load_test_data()
     clients = [Client(node_id) for node_id in range(NUM_CLIENTS)]
 
     multiprocessing.set_start_method('forkserver')
@@ -254,7 +249,7 @@ if __name__ == "__main__":
         for node_id in range(NUM_CLIENTS):
             client_results.append(clients[node_id].local_model_result)
 
-        global_model_params, global_loss, global_accuracy = centralized_aggregation(global_model_epoch, client_results)
+        global_model_params, global_loss, global_accuracy = centralized_aggregation(test_loader, global_model_epoch, client_results)
 
         write_global_log(global_model_epoch, global_loss, global_accuracy, epoch_start_time)
         
