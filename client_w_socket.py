@@ -30,12 +30,10 @@ elif os.getenv('MODEL') == 'ANN':
 else:
     raise Exception("Model type wrong!!")
 
-if os.getenv('NOISE') != 'None':
-    NOISE_MEAN, NOISE_STD = float(os.getenv('NOISE').split(',')[0]), float(os.getenv('NOISE').split(',')[1])
-else:
-    NOISE_MEAN, NOISE_STD = None, None
+NOISE_ABS_STD =  None if os.getenv('NOISE').split(',')[0] == '_' else float(os.getenv('NOISE').split(',')[0])
+NOISE_PERCENTAGE_STD = None if os.getenv('NOISE').split(',')[1] == '_' else float(os.getenv('NOISE').split(',')[1])
 
-from fedlearn import sha256_hash, set_parameters, get_parameters, add_noise_to_model
+from fedlearn import sha256_hash, set_parameters, get_parameters, add_percentage_gaussian_noise_to_model, add_constant_gaussian_noise_to_model
 
 
 gpu_assignment = [int(x) for x in os.getenv('GPU_ASSIGNMENT').split(',')]
@@ -80,8 +78,10 @@ class PeripheralFL():
                 cifar10.train(model, optimizer, trainloader, DEVICE, 1)
                 loss, accuracy = cifar10.test(model, testloader, DEVICE)
 
-                if NOISE_MEAN is not None:
-                    add_noise_to_model(model, DEVICE, NOISE_MEAN, NOISE_STD)
+                if NOISE_ABS_STD is not None:
+                    add_constant_gaussian_noise_to_model(model, DEVICE, NOISE_ABS_STD)
+                if NOISE_PERCENTAGE_STD is not None:
+                    add_percentage_gaussian_noise_to_model(model, DEVICE, NOISE_PERCENTAGE_STD)
 
                 trained_local_result = (get_parameters(model), len(trainloader.dataset))
 

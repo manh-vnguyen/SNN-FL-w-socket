@@ -28,12 +28,10 @@ if os.getenv('MODEL') == 'SNN':
 elif os.getenv('MODEL') == 'ANN':
     import cifar10_ANN as cifar10
 
-if os.getenv('NOISE') != 'None':
-    NOISE_MEAN, NOISE_STD = float(os.getenv('NOISE').split(',')[0]), float(os.getenv('NOISE').split(',')[1])
-else:
-    NOISE_MEAN, NOISE_STD = None, None
+NOISE_ABS_STD =  None if os.getenv('NOISE').split(',')[0] == '_' else float(os.getenv('NOISE').split(',')[0])
+NOISE_PERCENTAGE_STD = None if os.getenv('NOISE').split(',')[1] == '_' else float(os.getenv('NOISE').split(',')[1])
 
-from fedlearn import sha256_hash, fedavg_aggregate, set_parameters, get_parameters, add_noise_to_model
+from fedlearn import sha256_hash, fedavg_aggregate, set_parameters, get_parameters, add_percentage_gaussian_noise_to_model, add_constant_gaussian_noise_to_model
 
 DEVICE = torch.device(f"cuda:{os.getenv('SERVER_GPU_ASSIGNMENT')}" if torch.cuda.is_available() else "cpu")
 CPU_DEVICE = torch.device("cpu")
@@ -111,8 +109,10 @@ def centralized_aggregation(current_training_epoch, client_model_record):
             set_parameters(global_model, global_model_params)
             global_loss, global_accuracy = evaluate(global_model)
 
-            if NOISE_MEAN is not None:
-                add_noise_to_model(global_model, DEVICE, NOISE_MEAN, NOISE_STD)
+            if NOISE_ABS_STD is not None:
+                add_constant_gaussian_noise_to_model(global_model, DEVICE, NOISE_ABS_STD)
+            if NOISE_PERCENTAGE_STD is not None:
+                add_percentage_gaussian_noise_to_model(global_model, DEVICE, NOISE_PERCENTAGE_STD)
 
             print(f"Aggregated result: Device: {DEVICE}, Training epoch {current_training_epoch}, Loss {global_loss}, Acc {global_accuracy}")
 

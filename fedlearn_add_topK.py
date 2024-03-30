@@ -17,19 +17,10 @@ NDArrayInt = npt.NDArray[np.int_]
 NDArrayFloat = npt.NDArray[np.float_]
 NDArrays = List[NDArray]
 
-def add_percentage_gaussian_noise_to_model(model, device, percentage=0.2):
+def add_noise_to_model(model, device, mean=0, std=0.01):
     with torch.no_grad():
         for param in model.parameters():
-            # Calculate the standard deviation as a percentage of the parameter's own standard deviation
-            std_dev = param.data.std().item()
-            noise_std = percentage * std_dev
-            # Generate and add the Gaussian noise
-            param.add_(torch.randn(param.size(), device=device) * noise_std)
-
-def add_constant_gaussian_noise_to_model(model, device, std=0.01):
-    with torch.no_grad():
-        for param in model.parameters():
-            param.add_(torch.randn(param.size()).to(device) * std)
+            param.add_(torch.randn(param.size()).to(device) * std + mean)
 
 def sha256_hash(data):
     hash_object = hashlib.sha256()
@@ -80,6 +71,24 @@ def set_parameters(net, parameters: List[np.ndarray]):
     net.load_state_dict(state_dict, strict=True)
 
 def fedavg_aggregate(results: List[Tuple[NDArrays, int]]) -> NDArrays:
+    """Compute weighted average."""
+    # Calculate the total number of examples used during training
+    num_examples_total = sum([num_examples for _, num_examples in results])
+
+    # Create a list of weights, each multiplied by the related number of examples
+    weighted_weights = [
+        [layer * num_examples for layer in weights] for weights, num_examples in results
+    ]
+
+    # Compute average weights of each layer
+    weights_prime: NDArrays = [
+        reduce(np.add, layer_updates) / num_examples_total
+        for layer_updates in zip(*weighted_weights)
+    ]
+    return parameters_to_ndarrays(ndarrays_to_parameters(weights_prime))
+
+
+def fedavg_aggregate_add_topK(results: List[Tuple[NDArrays, int]], k_rate=0.0) -> NDArrays:
     """Compute weighted average."""
     # Calculate the total number of examples used during training
     num_examples_total = sum([num_examples for _, num_examples in results])
