@@ -24,9 +24,9 @@ ARGS = parser.parse_args()
 load_dotenv(f"database{ARGS.db_postfix}/.env")
 
 if os.getenv('MODEL') == 'SNN':
-    import cifar10_SNN as cifar10
+    import SNN as NN
 elif os.getenv('MODEL') == 'ANN':
-    import cifar10_ANN as cifar10
+    import ANN as NN
 
 NOISE_ABS_STD =  None if os.getenv('NOISE').split(',')[0] == '_' else float(os.getenv('NOISE').split(',')[0])
 NOISE_PERCENTAGE_STD = None if os.getenv('NOISE').split(',')[1] == '_' else float(os.getenv('NOISE').split(',')[1])
@@ -87,15 +87,15 @@ def read_global_model(file_path):
 def read_or_initialize_global_model():
     if not os.path.isfile(PERMANENT_GLOBAL_MODEL_PATH):
         write_global_model(
-            PERMANENT_GLOBAL_MODEL_PATH, -1, get_parameters(cifar10.load_model().to(CPU_DEVICE)), None, None
+            PERMANENT_GLOBAL_MODEL_PATH, -1, get_parameters(NN.load_model().to(CPU_DEVICE)), None, None
         )
     
     return read_global_model(PERMANENT_GLOBAL_MODEL_PATH)
 
 def evaluate(global_model):
-    test_loader = cifar10.load_test_data()
+    test_loader = NN.load_test_data()
     
-    loss, accuracy = cifar10.test(global_model, test_loader, DEVICE)
+    loss, accuracy = NN.test(global_model, test_loader, DEVICE)
 
     return loss, accuracy
 
@@ -105,7 +105,7 @@ def centralized_aggregation(current_training_epoch, client_model_record):
             client_results = [client_model_record[uid] for uid in client_model_record.keys()]
             global_model_params = fedavg_aggregate(client_results)
 
-            global_model = cifar10.load_model().to(DEVICE)
+            global_model = NN.load_model().to(DEVICE)
             set_parameters(global_model, global_model_params)
             global_loss, global_accuracy = evaluate(global_model)
 

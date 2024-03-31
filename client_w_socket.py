@@ -24,9 +24,9 @@ ARGS = parser.parse_args()
 load_dotenv(f"database{ARGS.db_postfix}/.env")
 
 if os.getenv('MODEL') == 'SNN':
-    import cifar10_SNN as cifar10
+    import SNN as NN
 elif os.getenv('MODEL') == 'ANN':
-    import cifar10_ANN as cifar10
+    import ANN as NN
 else:
     raise Exception("Model type wrong!!")
 
@@ -66,16 +66,16 @@ class PeripheralFL():
         while True:
             try:
                 # Load data
-                trainloader, testloader = cifar10.load_client_data(ARGS.node_id)
+                trainloader, testloader = NN.load_client_data(ARGS.node_id)
 
                 # Set model parameters, train model, return updated model parameters
-                model = cifar10.load_model().to(DEVICE)
+                model = NN.load_model().to(DEVICE)
                 optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.0)
 
                 set_parameters(model, parameters)
 
-                cifar10.train(model, optimizer, trainloader, DEVICE, 1)
-                loss, accuracy = cifar10.test(model, testloader, DEVICE)
+                NN.train(model, optimizer, trainloader, DEVICE, 1)
+                loss, accuracy = NN.test(model, testloader, DEVICE)
 
                 if NOISE_ABS_STD is not None:
                     add_constant_gaussian_noise_to_model(model, DEVICE, NOISE_ABS_STD)
@@ -393,5 +393,5 @@ if __name__ == "__main__":
 
     # peripheral_fl = PeripheralFL()
 
-    # params = get_parameters(cifar10.load_model().to(DEVICE))
+    # params = get_parameters(NN.load_model().to(DEVICE))
     # peripheral_fl.spawn_new_local_training(0, params)

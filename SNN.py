@@ -31,11 +31,10 @@ DTYPE = torch.float
 
 BATCH_SIZE = 64
 
-NUM_OUTPUTS = 10
-
 # Temporal Dynamics
 NUM_STEPS = int(os.getenv('NUM_STEPS'))
 DATA_PATH = os.getenv('DATA_PATH')
+NUM_OUTPUTS = 10 if os.getenv('NUM_OUTPUTS') is None else int(os.getenv('NUM_OUTPUTS'))
 
 mixup_transforms = []
 mixup_alpha=0.2

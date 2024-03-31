@@ -19,9 +19,9 @@ ARGS = parser.parse_args()
 load_dotenv(f"database{ARGS.db_postfix}/.env")
 
 if os.getenv('MODEL') == 'SNN':
-    import cifar10_SNN as cifar10
+    import SNN as NN
 elif os.getenv('MODEL') == 'ANN':
-    import cifar10_ANN as cifar10
+    import ANN as NN
 else:
     raise Exception("Model type wrong!!")
 
@@ -82,16 +82,16 @@ class Client:
         while True:
             try:
                 # Load data
-                trainloader, testloader = cifar10.load_client_data(self.node_id)
+                trainloader, testloader = NN.load_client_data(self.node_id)
 
                 # Set model parameters, train model, return updated model parameters
-                model = cifar10.load_model().to(self.device)
+                model = NN.load_model().to(self.device)
                 optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.0)
 
                 set_parameters(model, parameters)
 
-                cifar10.train(model, optimizer, trainloader, self.device, 1)
-                loss, accuracy = cifar10.test(model, testloader, self.device)
+                NN.train(model, optimizer, trainloader, self.device, 1)
+                loss, accuracy = NN.test(model, testloader, self.device)
 
                 if NOISE_ABS_STD is not None:
                     add_constant_gaussian_noise_to_model(model, self.device, NOISE_ABS_STD)
@@ -191,7 +191,7 @@ def read_global_model(file_path):
 def read_or_initialize_global_model():
     if not os.path.isfile(PERMANENT_GLOBAL_MODEL_PATH):
         write_global_model(
-            PERMANENT_GLOBAL_MODEL_PATH, -1, get_parameters(cifar10.load_model().to(CPU_DEVICE)), None, None
+            PERMANENT_GLOBAL_MODEL_PATH, -1, get_parameters(NN.load_model().to(CPU_DEVICE)), None, None
         )
     
     return read_global_model(PERMANENT_GLOBAL_MODEL_PATH)
@@ -201,10 +201,10 @@ def centralized_aggregation(test_loader, current_training_epoch, client_results)
         try:
             global_model_params = fedavg_aggregate(client_results)
 
-            global_model = cifar10.load_model().to(DEVICE)
+            global_model = NN.load_model().to(DEVICE)
             set_parameters(global_model, global_model_params)
 
-            global_loss, global_accuracy = cifar10.test(global_model, test_loader, DEVICE)
+            global_loss, global_accuracy = NN.test(global_model, test_loader, DEVICE)
 
             print(f"Aggregated result: Device: {DEVICE}, Training epoch {current_training_epoch}, Loss {global_loss}, Acc {global_accuracy}")
 
@@ -225,13 +225,13 @@ def centralized_aggregation(test_loader, current_training_epoch, client_results)
             print(f"Error in aggregation: {e}")
             time.sleep(5)
 
-NUM_EPOCHS = 100 if os.getenv('MIN_FIT_CLIENTS') is None else int(os.getenv('MIN_FIT_CLIENTS'))
+NUM_EPOCHS = 100 if os.getenv('NUM_EPOCHS') is None else int(os.getenv('NUM_EPOCHS'))
 NUM_CLIENTS = 8
 MIN_FIT_CLIENTS = 8 if os.getenv('MIN_FIT_CLIENTS') is None else int(os.getenv('MIN_FIT_CLIENTS'))
 
 
 if __name__ == "__main__":
-    test_loader = cifar10.load_test_data()
+    test_loader = NN.load_test_data()
     clients = [Client(node_id) for node_id in range(NUM_CLIENTS)]
 
     multiprocessing.set_start_method('forkserver')
@@ -242,7 +242,8 @@ if __name__ == "__main__":
 
     global_model_params = global_model_data['global_model_params']
 
-    while global_model_epoch < NUM_EPOCHS:
+    # while global_model_epoch < NUM_EPOCHS:
+    while True:
         epoch_start_time = time.time()
         global_model_epoch += 1
         for node_id in range(NUM_CLIENTS):

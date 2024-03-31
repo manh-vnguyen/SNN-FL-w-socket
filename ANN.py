@@ -20,8 +20,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 BATCH_SIZE = 64
 DATA_PATH = os.getenv('DATA_PATH')
-
-NUM_OUTPUTS = 10
+NUM_OUTPUTS = 10 if os.getenv('NUM_OUTPUTS') is None else int(os.getenv('NUM_OUTPUTS'))
 
 loader_g = torch.Generator()
 loader_g.manual_seed(2023)
