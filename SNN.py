@@ -46,9 +46,9 @@ if mixup_alpha > 0.0:
         # TODO implement a CrossEntropyLoss to support for probabilities for each class.
         raise NotImplementedError("CrossEntropyLoss in pytorch < 1.11.0 does not support for probabilities for each class."
                                     "Set mixup_alpha=0. to avoid such a problem or update your pytorch.")
-    mixup_transforms.append(transforms.RandomMixup(10, p=1.0, alpha=mixup_alpha))
+    mixup_transforms.append(transforms.RandomMixup(NUM_OUTPUTS, p=1.0, alpha=mixup_alpha))
 if cutmix_alpha > 0.0:
-    mixup_transforms.append(transforms.RandomCutmix(10, p=1.0, alpha=cutmix_alpha))
+    mixup_transforms.append(transforms.RandomCutmix(NUM_OUTPUTS, p=1.0, alpha=cutmix_alpha))
 if mixup_transforms:
     mixupcutmix = torchvision.transforms.RandomChoice(mixup_transforms)
     collate_fn = lambda batch: mixupcutmix(*default_collate(batch))  # noqa: E731
@@ -143,7 +143,7 @@ def train(model, optimizer, trainloader, device, epoch, model_ema=None, scaler=N
             image = preprocess_train_sample(image)
             output = process_model_output(model(image))      # Pulse firing frequency
             targets = torch.argmax(target, dim=1)
-            label_one_hot = F.one_hot(targets, 10).float()
+            label_one_hot = F.one_hot(targets, NUM_OUTPUTS).float()
             loss = F.mse_loss(output, label_one_hot)  # The spike firing frequency of output layer neurons and the MSE of the real category
 
         optimizer.zero_grad()
@@ -195,7 +195,7 @@ def test(model, data_loader, device, log_suffix=""):
             target = target.to(device, non_blocking=True)
             image = preprocess_test_sample(image)
             output = process_model_output(model(image))
-            label_one_hot = F.one_hot(target, 10).float()
+            label_one_hot = F.one_hot(target, NUM_OUTPUTS).float()
             loss = F.mse_loss(output, label_one_hot)  # The spike firing frequency of output layer neurons and the MSE of the real category
 
             acc1, acc5 = cal_acc1_acc5(output, target)
