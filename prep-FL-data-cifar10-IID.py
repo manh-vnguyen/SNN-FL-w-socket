@@ -9,14 +9,14 @@ from torch.utils.data.dataloader import default_collate
 
 
 DATA_PATH='/tmp/data/cifar10'
-NUM_CLIENTS = 8
-DUMP_FILE_NAME = '/tmp/data/fed-data-IID.pkl'
+NUM_CLIENTS = 10
+DUMP_FILE_NAME = '/tmp/data/CIFAR10-IID-10-CLIENT.pkl'
 
 transform = torchvision.transforms.Compose([
             torchvision.transforms.ToTensor(),
             torchvision.transforms.Normalize(
-                (0.4914, 0.4822, 0.4465), 
-                (0.2023, 0.1994, 0.2010)),
+                    (0.5, 0.5, 0.5), 
+                    (0.5, 0.5, 0.5)),
             ])
 
 cifar10_train = torchvision.datasets.CIFAR10(
@@ -33,34 +33,55 @@ cifar10_test = torchvision.datasets.CIFAR10(
     download=True
 )
 
+def cifar_iid(dataset, num_users):
+    """
+    Sample I.I.D. client data from CIFAR10 dataset
+    :param dataset:
+    :param num_users:
+    :return: dict of image index
+    """
+    num_items = int(len(dataset)/num_users)
+    dict_users, all_idxs = {}, [i for i in range(len(dataset))]
+    for i in range(num_users):
+        dict_users[i] = set(np.random.choice(all_idxs, num_items, replace=False))
+        all_idxs = list(set(all_idxs) - dict_users[i])
+    return dict_users
+
+def cifar_non_iid(dataset, num_classes, num_users, alpha = 0.5):
+    N = len(dataset)
+    min_size = 0
+    print("Dataset size:", N)
+
+    dict_users = {}
+    while min_size < 10:
+        idx_batch = [[] for _ in range(num_users)]
+        for k in range(num_classes):
+            idx_k = np.where(np.asarray(dataset.targets) == k)[0]
+            np.random.shuffle(idx_k)
+            proportions = np.random.dirichlet(np.repeat(alpha, num_users))
+            ## Balance
+            proportions = np.array([p*(len(idx_j)<N/num_users) for p,idx_j in zip(proportions,idx_batch)])
+            proportions = proportions/proportions.sum()
+            proportions = (np.cumsum(proportions)*len(idx_k)).astype(int)[:-1]
+            idx_batch = [idx_j + idx.tolist() for idx_j,idx in zip(idx_batch,np.split(idx_k,proportions))]
+            min_size = min([len(idx_j) for idx_j in idx_batch])
+
+    for j in range(num_users):
+        np.random.shuffle(idx_batch[j])
+        dict_users[j] = idx_batch[j]
+    return dict_users
+
 def prep_FL_data():
-    # Calculate the size of each partition
-    total_size = len(cifar10_train)
-    partition_size = total_size // NUM_CLIENTS
-    indices = list(range(total_size))
+    trainset_id_lists = cifar_iid(cifar10_train, NUM_CLIENTS)
 
-    np.random.shuffle(indices)
-
-    subset_id_lists = [indices[i * partition_size:(i + 1) * partition_size] for i in range(NUM_CLIENTS)]
-
-    subsets = [Subset(cifar10_train, subset_id_list)
-                        for subset_id_list in subset_id_lists]
-
-    # Create train/val for each partition and wrap it into DataLoader
-    trainsets = []
-    valsets = []
-    for partition_id in range(NUM_CLIENTS):
-        partition_train, partition_test = random_split(subsets[partition_id], [0.8, 0.2])
-        
-        trainsets.append(partition_train)
-        valsets.append(partition_test)
+    trainsets = [Subset(cifar10_train, list(trainset_id_lists[i]))
+                        for i in range(len(trainset_id_lists))]
     
     testset = cifar10_test
-    return trainsets, valsets, testset
+    return trainsets, testset
 
 def dump_FL_data():
     with open(DUMP_FILE_NAME, 'wb') as file:
-        # Use pickle.dump() to dump the data into the file
         pickle.dump(prep_FL_data(), file)
 
 if __name__ == "__main__":

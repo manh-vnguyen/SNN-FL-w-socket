@@ -12,7 +12,7 @@ class Surrogate_BP_Function(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input):
         ctx.save_for_backward(input)
-        out = torch.zeros_like(input).cuda()
+        out = torch.zeros_like(input)
         out[input > 0] = 1.0
         return out
 
@@ -25,7 +25,7 @@ class Surrogate_BP_Function(torch.autograd.Function):
 
 
 def PoissonGen(inp, rescale_fac=2.0):
-    rand_inp = torch.rand_like(inp).cuda()
+    rand_inp = torch.rand_like(inp)
     return torch.mul(torch.le(rand_inp * rescale_fac, torch.abs(inp)).float(), torch.sign(inp))
 
 
@@ -34,9 +34,10 @@ def PoissonGen(inp, rescale_fac=2.0):
 
 
 class SNN_VGG9_BNTT(nn.Module):
-    def __init__(self, timesteps=20, leak_mem=0.95, img_size=32,  num_cls=10):
+    def __init__(self, timesteps=20, leak_mem=0.95, img_size=32,  num_cls=10, device=torch.device('cuda:0')):
         super(SNN_VGG9_BNTT, self).__init__()
 
+        self.device = device
         self.img_size = img_size
         self.num_cls = num_cls
         self.timesteps = timesteps
@@ -44,9 +45,9 @@ class SNN_VGG9_BNTT(nn.Module):
         self.leak_mem = leak_mem
         self.batch_num = self.timesteps
 
-        print (">>>>>>>>>>>>>>>>>>> VGG 9 >>>>>>>>>>>>>>>>>>>>>>")
-        print ("***** time step per batchnorm".format(self.batch_num))
-        print (">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+        # print (">>>>>>>>>>>>>>>>>>> VGG 9 >>>>>>>>>>>>>>>>>>>>>>")
+        # print ("***** time step per batchnorm".format(self.batch_num))
+        # print (">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
         affine_flag = True
         bias_flag = False
@@ -101,17 +102,17 @@ class SNN_VGG9_BNTT(nn.Module):
     def forward(self, inp):
 
         batch_size = inp.size(0)
-        mem_conv1 = torch.zeros(batch_size, 64, self.img_size, self.img_size).cuda()
-        mem_conv2 = torch.zeros(batch_size, 64, self.img_size, self.img_size).cuda()
-        mem_conv3 = torch.zeros(batch_size, 128, self.img_size//2, self.img_size//2).cuda()
-        mem_conv4 = torch.zeros(batch_size, 128, self.img_size//2, self.img_size//2).cuda()
-        mem_conv5 = torch.zeros(batch_size, 256, self.img_size//4, self.img_size//4).cuda()
-        mem_conv6 = torch.zeros(batch_size, 256, self.img_size//4, self.img_size//4).cuda()
-        mem_conv7 = torch.zeros(batch_size, 256, self.img_size//4, self.img_size//4).cuda()
+        mem_conv1 = torch.zeros(batch_size, 64, self.img_size, self.img_size).to(self.device)
+        mem_conv2 = torch.zeros(batch_size, 64, self.img_size, self.img_size).to(self.device)
+        mem_conv3 = torch.zeros(batch_size, 128, self.img_size//2, self.img_size//2).to(self.device)
+        mem_conv4 = torch.zeros(batch_size, 128, self.img_size//2, self.img_size//2).to(self.device)
+        mem_conv5 = torch.zeros(batch_size, 256, self.img_size//4, self.img_size//4).to(self.device)
+        mem_conv6 = torch.zeros(batch_size, 256, self.img_size//4, self.img_size//4).to(self.device)
+        mem_conv7 = torch.zeros(batch_size, 256, self.img_size//4, self.img_size//4).to(self.device)
         mem_conv_list = [mem_conv1, mem_conv2, mem_conv3, mem_conv4, mem_conv5, mem_conv6, mem_conv7]
 
-        mem_fc1 = torch.zeros(batch_size, 1024).cuda()
-        mem_fc2 = torch.zeros(batch_size, self.num_cls).cuda()
+        mem_fc1 = torch.zeros(batch_size, 1024).to(self.device)
+        mem_fc2 = torch.zeros(batch_size, self.num_cls).to(self.device)
 
 
 
@@ -124,7 +125,7 @@ class SNN_VGG9_BNTT(nn.Module):
                 mem_conv_list[i] = self.leak_mem * mem_conv_list[i] + self.bntt_list[i][t](self.conv_list[i](out_prev))
                 mem_thr = (mem_conv_list[i] / self.conv_list[i].threshold) - 1.0
                 out = self.spike_fn(mem_thr)
-                rst = torch.zeros_like(mem_conv_list[i]).cuda()
+                rst = torch.zeros_like(mem_conv_list[i]).to(self.device)
                 rst[mem_thr > 0] = self.conv_list[i].threshold
                 mem_conv_list[i] = mem_conv_list[i] - rst
                 out_prev = out.clone()
@@ -140,7 +141,7 @@ class SNN_VGG9_BNTT(nn.Module):
             mem_fc1 = self.leak_mem * mem_fc1 + self.bntt_fc[t](self.fc1(out_prev))
             mem_thr = (mem_fc1 / self.fc1.threshold) - 1.0
             out = self.spike_fn(mem_thr)
-            rst = torch.zeros_like(mem_fc1).cuda()
+            rst = torch.zeros_like(mem_fc1).to(self.device)
             rst[mem_thr > 0] = self.fc1.threshold
             mem_fc1 = mem_fc1 - rst
             out_prev = out.clone()
@@ -155,9 +156,10 @@ class SNN_VGG9_BNTT(nn.Module):
 
 
 class SNN_VGG11_BNTT(nn.Module):
-    def __init__(self, timesteps=20, leak_mem=0.95, img_size=32,  num_cls=10):
+    def __init__(self, timesteps=20, leak_mem=0.95, img_size=32,  num_cls=10, device=torch.device('cpu:0')):
         super(SNN_VGG11_BNTT, self).__init__()
 
+        self.device = device
         self.img_size = img_size
         self.num_cls = num_cls
         self.timesteps = timesteps
@@ -165,9 +167,9 @@ class SNN_VGG11_BNTT(nn.Module):
         self.leak_mem = leak_mem
         self.batch_num = self.timesteps
 
-        print (">>>>>>>>>>>>>>>>> VGG11 >>>>>>>>>>>>>>>>>>>>>>>")
-        print ("***** time step per batchnorm".format(self.batch_num))
-        print (">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+        # print (">>>>>>>>>>>>>>>>> VGG11 >>>>>>>>>>>>>>>>>>>>>>>")
+        # print ("***** time step per batchnorm".format(self.batch_num))
+        # print (">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
         affine_flag = True
         bias_flag = False
@@ -231,18 +233,18 @@ class SNN_VGG11_BNTT(nn.Module):
     def forward(self, inp):
 
         batch_size = inp.size(0)
-        mem_conv1 = torch.zeros(batch_size, 64, self.img_size, self.img_size).cuda()
-        mem_conv2 = torch.zeros(batch_size, 128, self.img_size // 2, self.img_size // 2).cuda()
-        mem_conv3 = torch.zeros(batch_size, 256, self.img_size // 4, self.img_size // 4).cuda()
-        mem_conv4 = torch.zeros(batch_size, 256, self.img_size // 4, self.img_size // 4).cuda()
-        mem_conv5 = torch.zeros(batch_size, 512, self.img_size // 8, self.img_size // 8).cuda()
-        mem_conv6 = torch.zeros(batch_size, 512, self.img_size // 8, self.img_size // 8).cuda()
-        mem_conv7 = torch.zeros(batch_size, 512, self.img_size // 16, self.img_size // 16).cuda()
-        mem_conv8 = torch.zeros(batch_size, 512, self.img_size // 16, self.img_size // 16).cuda()
+        mem_conv1 = torch.zeros(batch_size, 64, self.img_size, self.img_size).to(self.device)
+        mem_conv2 = torch.zeros(batch_size, 128, self.img_size // 2, self.img_size // 2).to(self.device)
+        mem_conv3 = torch.zeros(batch_size, 256, self.img_size // 4, self.img_size // 4).to(self.device)
+        mem_conv4 = torch.zeros(batch_size, 256, self.img_size // 4, self.img_size // 4).to(self.device)
+        mem_conv5 = torch.zeros(batch_size, 512, self.img_size // 8, self.img_size // 8).to(self.device)
+        mem_conv6 = torch.zeros(batch_size, 512, self.img_size // 8, self.img_size // 8).to(self.device)
+        mem_conv7 = torch.zeros(batch_size, 512, self.img_size // 16, self.img_size // 16).to(self.device)
+        mem_conv8 = torch.zeros(batch_size, 512, self.img_size // 16, self.img_size // 16).to(self.device)
         mem_conv_list = [mem_conv1, mem_conv2, mem_conv3, mem_conv4, mem_conv5, mem_conv6, mem_conv7, mem_conv8]
 
-        mem_fc1 = torch.zeros(batch_size, 4096).cuda()
-        mem_fc2 = torch.zeros(batch_size, self.num_cls).cuda()
+        mem_fc1 = torch.zeros(batch_size, 4096).to(self.device)
+        mem_fc2 = torch.zeros(batch_size, self.num_cls).to(self.device)
 
 
 
@@ -255,7 +257,7 @@ class SNN_VGG11_BNTT(nn.Module):
                 mem_conv_list[i] = self.leak_mem * mem_conv_list[i] + self.bntt_list[i][t](self.conv_list[i](out_prev))
                 mem_thr = (mem_conv_list[i] / self.conv_list[i].threshold) - 1.0
                 out = self.spike_fn(mem_thr)
-                rst = torch.zeros_like(mem_conv_list[i]).cuda()
+                rst = torch.zeros_like(mem_conv_list[i]).to(self.device)
                 rst[mem_thr > 0] = self.conv_list[i].threshold
                 mem_conv_list[i] = mem_conv_list[i] - rst
                 out_prev = out.clone()
@@ -271,7 +273,7 @@ class SNN_VGG11_BNTT(nn.Module):
             mem_fc1 = self.leak_mem * mem_fc1 + self.bntt_fc[t](self.fc1(out_prev))
             mem_thr = (mem_fc1 / self.fc1.threshold) - 1.0
             out = self.spike_fn(mem_thr)
-            rst = torch.zeros_like(mem_fc1).cuda()
+            rst = torch.zeros_like(mem_fc1).to(self.device)
             rst[mem_thr > 0] = self.fc1.threshold
             mem_fc1 = mem_fc1 - rst
             out_prev = out.clone()

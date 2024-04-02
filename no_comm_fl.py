@@ -18,16 +18,31 @@ ARGS = parser.parse_args()
 
 load_dotenv(f"database{ARGS.db_postfix}/.env")
 
+NOISE_ABS_STD =  None if os.getenv('NOISE').split(',')[0] == '_' else float(os.getenv('NOISE').split(',')[0])
+NOISE_PERCENTAGE_STD = None if os.getenv('NOISE').split(',')[1] == '_' else float(os.getenv('NOISE').split(',')[1])
+PARAMS_COMPRESSION_RATE = None if os.getenv('PARAMS_COMPRESSION_RATE') == '_' else float(os.getenv('PARAMS_COMPRESSION_RATE'))
+
+LR_INITIAL = float(os.getenv('LR_INITIAL'))
+LR_INTERVALS = [] if os.getenv('LR_INTERVALS') == '_' else [int(item) for item in os.getenv('LR_INTERVALS').split(',')]
+LR_REDUCTION = None if os.getenv('LR_REDUCTION') == '_' else float(os.getenv('LR_REDUCTION'))
+OPT_MOMENTUM = 0 if os.getenv('OPT_MOMENTUM') == '_' else float(os.getenv('OPT_MOMENTUM'))
+WEIGHT_DECAY = 0 if os.getenv('WEIGHT_DECAY') == '_' else float(os.getenv('WEIGHT_DECAY'))
+
+NUM_LOCAL_EPOCHS = 1 if os.getenv('NUM_LOCAL_EPOCHS') == '_' else int(os.getenv('NUM_LOCAL_EPOCHS'))
+NUM_EPOCHS = 100 if os.getenv('NUM_EPOCHS') == '_' else int(os.getenv('NUM_EPOCHS'))
+NUM_CLIENTS = 8 if os.getenv('MIN_FIT_CLIENTS') == '_' else int(os.getenv('MIN_FIT_CLIENTS'))
+MIN_FIT_CLIENTS = NUM_CLIENTS if os.getenv('MIN_FIT_CLIENTS') == '_' else int(os.getenv('MIN_FIT_CLIENTS'))
+
 if os.getenv('MODEL') == 'SNN':
     import SNN as NN
 elif os.getenv('MODEL') == 'ANN':
     import ANN as NN
+elif os.getenv('MODEL') == 'TSP_SNN':
+    import TSP_SNN as NN
+elif os.getenv('MODEL') == 'TSP_ANN':
+    import TSP_ANN as NN
 else:
     raise Exception("Model type wrong!!")
-
-NOISE_ABS_STD =  None if os.getenv('NOISE').split(',')[0] == '_' else float(os.getenv('NOISE').split(',')[0])
-NOISE_PERCENTAGE_STD = None if os.getenv('NOISE').split(',')[1] == '_' else float(os.getenv('NOISE').split(',')[1])
-PARAMS_COMPRESSION_RATE = None if os.getenv('PARAMS_COMPRESSION_RATE') == '_' else float(os.getenv('PARAMS_COMPRESSION_RATE'))
 
 from fedlearn import set_parameters, get_parameters, add_percentage_gaussian_noise_to_model, add_constant_gaussian_noise_to_model, fedavg_aggregate, compress_parameters
 
@@ -50,7 +65,6 @@ class Client:
         self.database = self.read_or_initiate_database()
         self.client_uid = self.database['client_uid']
         self.client_logs = self.database['client_logs']
-        # self.sock.settimeout(5.0)
 
     def write_database(self, data):
         with open(self.client_database_path, 'w') as file:
@@ -85,12 +99,12 @@ class Client:
                 trainloader, testloader = NN.load_client_data(self.node_id)
 
                 # Set model parameters, train model, return updated model parameters
-                model = NN.load_model().to(self.device)
-                optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.0)
+                model = NN.load_model(self.device).to(self.device)
+                optimizer = torch.optim.SGD(model.parameters(), lr=config['lr'], momentum=config['momentum'], weight_decay = config['weight_decay'])
 
                 set_parameters(model, parameters)
 
-                NN.train(model, optimizer, trainloader, self.device, 1)
+                NN.train(model, optimizer, trainloader, self.device, config['num_local_epochs'])
                 loss, accuracy = NN.test(model, testloader, self.device)
 
                 if NOISE_ABS_STD is not None:
@@ -123,13 +137,31 @@ class Client:
                 # with open(RESULT_CACHE_PATH, 'w') as file:
                 #     file.write("FAILED")
 
+    def cal_learning_rate(self, epoch):
+        learning_rate = LR_INITIAL
+
+        for milestone in LR_INTERVALS:
+            if epoch >= milestone:
+                learning_rate /= LR_REDUCTION
+
+        return learning_rate
+
+    def clear_result_cache(self):
+        if os.path.exists(self.result_cach_path):
+            os.remove(self.result_cach_path)
+
     def spawn_new_local_training(self, epoch, parameters):
         # self.discard_local_training()
         
-        self.local_traing_process = multiprocessing.Process(target=self.fit, args=(parameters, {}))
+        self.local_traing_process = multiprocessing.Process(target=self.fit, args=(parameters, {
+            'epoch': epoch,
+            'lr': self.cal_learning_rate(epoch),
+            'momentum': OPT_MOMENTUM,
+            'weight_decay': WEIGHT_DECAY,
+            'num_local_epochs': NUM_LOCAL_EPOCHS,
+        },))
 
-        if os.path.exists(self.result_cach_path):
-            os.remove(self.result_cach_path)
+        self.clear_result_cache()
 
         self.current_training_epoch = epoch
         self.local_traing_process.start()
@@ -151,6 +183,8 @@ class Client:
         })
 
         self.make_backup()
+        self.clear_result_cache()
+        del self.local_traing_process
         return True
 
 def write_global_log(global_model_epoch, global_loss, global_accuracy, epoch_start_time):
@@ -191,7 +225,7 @@ def read_global_model(file_path):
 def read_or_initialize_global_model():
     if not os.path.isfile(PERMANENT_GLOBAL_MODEL_PATH):
         write_global_model(
-            PERMANENT_GLOBAL_MODEL_PATH, -1, get_parameters(NN.load_model().to(CPU_DEVICE)), None, None
+            PERMANENT_GLOBAL_MODEL_PATH, -1, get_parameters(NN.load_model(CPU_DEVICE).to(CPU_DEVICE)), None, None
         )
     
     return read_global_model(PERMANENT_GLOBAL_MODEL_PATH)
@@ -201,7 +235,7 @@ def centralized_aggregation(test_loader, current_training_epoch, client_results)
         try:
             global_model_params = fedavg_aggregate(client_results)
 
-            global_model = NN.load_model().to(DEVICE)
+            global_model = NN.load_model(DEVICE).to(DEVICE)
             set_parameters(global_model, global_model_params)
 
             global_loss, global_accuracy = NN.test(global_model, test_loader, DEVICE)
@@ -225,12 +259,27 @@ def centralized_aggregation(test_loader, current_training_epoch, client_results)
             print(f"Error in aggregation: {e}")
             time.sleep(5)
 
-NUM_EPOCHS = 100 if os.getenv('NUM_EPOCHS') is None else int(os.getenv('NUM_EPOCHS'))
-NUM_CLIENTS = 8
-MIN_FIT_CLIENTS = 8 if os.getenv('MIN_FIT_CLIENTS') is None else int(os.getenv('MIN_FIT_CLIENTS'))
-
-
 if __name__ == "__main__":
+    print(f"MODEL: {os.getenv('MODEL')}")
+    print(f"NOISE_ABS_STD: {NOISE_ABS_STD}")
+    print(f"NOISE_PERCENTAGE_STD: {NOISE_PERCENTAGE_STD}")
+    print(f"PARAMS_COMPRESSION_RATE: {PARAMS_COMPRESSION_RATE}")
+    print(f"LR_INITIAL: {LR_INITIAL}")
+    print(f"LR_INTERVALS: {LR_INTERVALS}")
+    print(f"LR_REDUCTION: {LR_REDUCTION}")
+    print(f"OPT_MOMENTUM: {OPT_MOMENTUM}")
+    print(f"WEIGHT_DECAY: {WEIGHT_DECAY}")
+    print(f"NUM_LOCAL_EPOCHS: {NUM_LOCAL_EPOCHS}")
+    print(f"NUM_EPOCHS: {NUM_EPOCHS}")
+    print(f"NUM_CLIENTS: {NUM_CLIENTS}")
+    print(f"MIN_FIT_CLIENTS: {MIN_FIT_CLIENTS}")
+    print(f"gpu_assignment: {gpu_assignment}")
+    print(f"SERVER_LOG_DATABASE_PATH: {SERVER_LOG_DATABASE_PATH}")
+    print(f"TEMP_GLOBAL_MODEL_PATH: {TEMP_GLOBAL_MODEL_PATH}")
+    print(f"PERMANENT_GLOBAL_MODEL_PATH: {PERMANENT_GLOBAL_MODEL_PATH}")
+    print(f"DEVICE: {DEVICE}")
+    print(f"CPU_DEVICE: {CPU_DEVICE}")
+
     test_loader = NN.load_test_data()
     clients = [Client(node_id) for node_id in range(NUM_CLIENTS)]
 
@@ -242,21 +291,23 @@ if __name__ == "__main__":
 
     global_model_params = global_model_data['global_model_params']
 
-    # while global_model_epoch < NUM_EPOCHS:
-    while True:
+    while global_model_epoch < NUM_EPOCHS:
+        chosen_clients = np.random.choice(range(NUM_CLIENTS), MIN_FIT_CLIENTS, replace=False)
+        print("Selected clients:", chosen_clients)
+
         epoch_start_time = time.time()
         global_model_epoch += 1
-        for node_id in range(NUM_CLIENTS):
+        for node_id in chosen_clients:
             clients[node_id].spawn_new_local_training(global_model_epoch, global_model_params)
 
-        for node_id in range(NUM_CLIENTS):
+        for node_id in chosen_clients:
             clients[node_id].local_traing_process.join()
 
-        for node_id in range(NUM_CLIENTS):
+        for node_id in chosen_clients:
             clients[node_id].load_local_training_result_if_done()
 
         client_results = []
-        for node_id in range(NUM_CLIENTS):
+        for node_id in chosen_clients:
             client_results.append(clients[node_id].local_model_result)
 
         global_model_params, global_loss, global_accuracy = centralized_aggregation(test_loader, global_model_epoch, client_results)

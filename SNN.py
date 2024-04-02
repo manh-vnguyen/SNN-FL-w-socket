@@ -57,7 +57,7 @@ loader_g = torch.Generator()
 loader_g.manual_seed(2023)
 
 # Define Network
-def load_model(num_classes=NUM_OUTPUTS):
+def load_model(num_classes=NUM_OUTPUTS, device=None):
     net = spiking_vgg.__dict__['spiking_vgg11_bn'](pretrained=False, spiking_neuron=neuron.LIFNode,
                                                     surrogate_function=surrogate.ATan(), 
                                                     detach_reset=True, num_classes=num_classes)

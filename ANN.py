@@ -74,7 +74,7 @@ criterion = nn.CrossEntropyLoss()
 
 
 # Define Network
-def load_model():
+def load_model(device=None):
     return VGG11bn(num_classes=NUM_OUTPUTS)
 
 
